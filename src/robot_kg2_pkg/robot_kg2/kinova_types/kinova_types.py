@@ -6,7 +6,7 @@ hand_commmand.py:
 3
 """
 
-from ctypes import *
+from ctypes import Structure, c_int, c_char, c_float, POINTER, CDLL
 import time
 import numpy as np
 
@@ -39,11 +39,15 @@ class KinovaDevice(Structure):
     ]
 
 
-# Define the AngularInfo structure, to be used in AngularPosition structure
-# This data structure holds values in an angular (joint by joint) control context. As an example struct could contains position, temperature, torque, ...
 class AngularInfo(Structure):
+    """Define the AngularInfo structure, to be used in AngularPosition structure
+    This data structure holds values in an angular (joint by joint) control context.
+    As an example struct could contains position, temperature, torque, ...
+    """
+
     _fields_ = [
-        # As an example if the current control mode is angular position the unit will be degree but if the control mode is angular velocity
+        # As an example if the current control mode is angular position the unit will be degree
+        # but if the control mode is angular velocity
         # then the unit will be degree per second.
         ("Actuator1", c_float),
         ("Actuator2", c_float),
