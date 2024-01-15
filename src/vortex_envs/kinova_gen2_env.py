@@ -6,7 +6,7 @@ from settings import APP_SETTINGS
 from pathlib import Path
 from pydantic import BaseModel
 
-from vortex_envs.vortex_interface import VortexInterface
+from vortex_envs.vortex_interface import VortexInterface, AppMode
 
 """ Names in vortex scene """
 
@@ -125,16 +125,16 @@ class KinovaGen2Env(gym.Env):
         # Minimum and Maximum joint position limits (in radians)
         self.joints_range = {}
         self.joints_range['j2_pos_min'], self.joints_range['j2_pos_max'] = (
-            47.0 * (np.pi / 180.0),
-            313.0 * (np.pi / 180.0),
+            -360,  # * (np.pi / 180.0),
+            360,  # * (np.pi / 180.0),
         )
         self.joints_range['j4_pos_min'], self.joints_range['j4_pos_max'] = (
-            30.0 * (np.pi / 180.0),
-            330.0 * (np.pi / 180.0),
+            -360,  # * (np.pi / 180.0),
+            360,  # * (np.pi / 180.0),
         )
         self.joints_range['j6_pos_min'], self.joints_range['j6_pos_max'] = (
-            65.0 * (np.pi / 180.0),
-            295.0 * (np.pi / 180.0),
+            -360,  # * (np.pi / 180.0),
+            360,  # * (np.pi / 180.0),
         )
 
         # Minimum and Maximum joint force/torque limits (in N*m)
@@ -163,39 +163,43 @@ class KinovaGen2Env(gym.Env):
 
         self.vx_interface.load_scene(self.content_file)
 
-        # # Create a display window
+        # Create a display window
         self.vx_interface.load_display()
 
         # Set parameters values
-        for field, field_value in {**self.joints_range, **self.forces_range}.items():
+        for field, field_value in {**self.joints_range}.items():  # {**self.joints_range, **self.forces_range}.items():
             self.vx_interface.set_parameter(field, field_value)
 
         self.go_to_home()
 
     def go_to_home(self):
+        """
+        To bring the peg on top of the hole
+        """
+        self.vx_interface._set_app_mode(AppMode.SIMULATING)
+        self.vx_interface.application.pause(False)
+
         """Phase 1"""
         """ set joint velocities to initialize """
         print(self._readJvel_target())
 
         j4_vel_id = (np.pi / 180.0) * 90.0 / self.t_init_step
         # j6_vel_id = self.insertion_misalign / self.t_init_step
-        self.vx_interface.set_input(VX_IN.j4_vel_id, j4_vel_id)
-        self._send_joint_target_vel(np.array([0.0, 0.0, 0.0]))
+        # self.vx_interface.set_input(VX_IN.j4_vel_id, j4_vel_id)
+        self._send_joint_target_vel(np.array([0.0, j4_vel_id, 0.0]))
 
-        print(f'Vel target: {self._readJvel_target()}')
-        print(f'Start torque: {self._readJtorque()}')
-        print(f'Start vel: {self._readJvel()}')
+        # print(f'Vel target: {self._readJvel_target()}')
+        # print(f'Start torque: {self._readJtorque()}')
+        # print(f'Start vel: {self._readJvel()}')
 
         """ step the Vortex simulation """
         for i in range(self.init_steps):
             self.vx_interface.application.update()
 
-            obs = self._readJvel()
-            width = 10
-            precision = 4
-            print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
-
-            # self.render()
+            # obs = self._readJvel()
+            # width = 10
+            # precision = 4
+            # print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
 
         """ Read reference position and rotation """
         th_current = self._readJpos()
@@ -209,11 +213,6 @@ class KinovaGen2Env(gym.Env):
 
         for i in range(self.pause_steps):
             self.vx_interface.application.update()
-            # self.render()
-
-        """ read reference position and rotation """
-        # th_current = self._readJpos()
-        # self.ref_pos, self.ref_rot = self._read_ee_pos_rot_fk(th_current)
 
         """ Phase 2 (move downwards quickly and also make the tips aligned with the hole) """
         for i in range(self.pre_insert_steps):
@@ -223,13 +222,10 @@ class KinovaGen2Env(gym.Env):
             self._send_joint_target_vel(self.cur_j_vel)
 
             self.vx_interface.application.update()
-            # self.render()
-
-            self._get_obs()
 
         th_current = self._readJpos()
         pos_current = self._read_tips_pos_fk(th_current)
-        print('X after Phase 1:')
+        print('X after Phase 2:')
         print(pos_current[0])
 
         """ Phase 2 pause  """
@@ -237,7 +233,6 @@ class KinovaGen2Env(gym.Env):
 
         for i in range(self.pause_steps):
             self.vx_interface.application.update()
-            # self.render()
 
     def step(self, action):
         # Apply actions

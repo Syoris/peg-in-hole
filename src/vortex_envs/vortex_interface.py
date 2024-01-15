@@ -88,29 +88,18 @@ class VortexInterface:
             self.application = vxatp3.VxATPConfig.createApplication(self, application_name, setup_file_str)
             self._set_app_mode(AppMode.EDITING)
 
-            # Create a display window
-            self.display = Vortex.VxExtensionFactory.create(Vortex.DisplayICD.kExtensionFactoryKey)
-            self.display.getInput(Vortex.DisplayICD.kPlacementMode).setValue('Windowed')
-            self.display.setName('3D Display')
-            self.display.getInput(Vortex.DisplayICD.kPlacement).setValue(Vortex.VxVector4(50, 50, 1280, 720))
-
         else:
             self.application = self.vx_dll.VortexCreateApplication(str(setup_file).encode('ascii'), '', '', '', None)
 
     def load_scene(self, scene_file: Path):
         if USE_VORTEX_API:
             scene_file_str = str(scene_file)
-            vxatp3.VxATPUtils.requestApplicationModeChangeAndWait(self.application, Vortex.kModeEditing)
-
             self.scene = self.application.getSimulationFileManager().loadObject(scene_file_str)
 
             # Get the RL Interface VHL
             self.interface = self.scene.findExtensionByName('ML Interface')
 
             self.interface.getOutputContainer()['j2_pos_real'].value
-
-            # Switch to Simulation Mode
-            self._set_app_mode(AppMode.SIMULATING)
 
         else:
             self.scene = self.vx_dll.VortexLoadScene(str(scene_file).encode('ascii'))
