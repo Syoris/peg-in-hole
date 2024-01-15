@@ -8,12 +8,19 @@ I dont know where the dll's doc can be found
 import ctypes
 from pathlib import Path
 from settings import APP_SETTINGS
+from enum import Enum
 
 USE_VORTEX_API = True  # To use vortex api library or the dll. Vortex api only works w/ python 3.8
 
 if USE_VORTEX_API:
-    import Vortex
-    import vxatp3
+    import Vortex  # noqa
+    import vxatp3  # noqa
+
+
+class AppMode(Enum):
+    EDITING = Vortex.kModeEditing
+    SIMULATING = Vortex.kModeSimulating
+    PLAYBACK = Vortex.kModePlayingBack
 
 
 class Vector3(ctypes.Structure):
@@ -79,6 +86,7 @@ class VortexInterface:
         if USE_VORTEX_API:
             setup_file_str = str(setup_file)
             self.application = vxatp3.VxATPConfig.createApplication(self, application_name, setup_file_str)
+            self._set_app_mode(AppMode.EDITING)
 
             # Create a display window
             self.display = Vortex.VxExtensionFactory.create(Vortex.DisplayICD.kExtensionFactoryKey)
@@ -102,7 +110,7 @@ class VortexInterface:
             self.interface.getOutputContainer()['j2_pos_real'].value
 
             # Switch to Simulation Mode
-            vxatp3.VxATPUtils.requestApplicationModeChangeAndWait(self.application, Vortex.kModeSimulating)
+            self._set_app_mode(AppMode.SIMULATING)
 
         else:
             self.scene = self.vx_dll.VortexLoadScene(str(scene_file).encode('ascii'))
@@ -110,10 +118,24 @@ class VortexInterface:
         if self.scene is None or self.scene == 0:
             raise RuntimeError('Scene not properly loaded')
 
-    def set_real_input(self, field_name, field_value):
+    def load_display(self):
+        self.display = Vortex.VxExtensionFactory.create(Vortex.DisplayICD.kExtensionFactoryKey)
+        self.display.getInput(Vortex.DisplayICD.kPlacementMode).setValue('Windowed')
+        self.display.setName('Display')
+        self.display.getInput(Vortex.DisplayICD.kPlacement).setValue(Vortex.VxVector4(50, 50, 1280, 720))
+
+    def set_parameter(self, field_name: str, field_value):
+        self.interface.getParameterContainer()[field_name].value = field_value
+
+    def set_input(self, field_name: str, field_value):
         self.interface.getInputContainer()[field_name].value = field_value
 
-    def get_real_output(self, field_name):
+    def get_input(self, field_name: str):
+        val = self.interface.getInputContainer()[field_name].value
+
+        return val
+
+    def get_output(self, field_name: str):
         try:
             val = self.interface.getOutputContainer()[field_name].value
 
@@ -121,3 +143,21 @@ class VortexInterface:
             raise err
 
         return val
+
+    def render_display(self, active=True):
+        # Find current list of displays
+        current_displays = self.application.findExtensionsByName('Display')
+
+        # If active, add a display and activate Vsync
+        if active and len(current_displays) == 0:
+            self.application.add(self.display)
+            self.application.setSyncMode(Vortex.kSyncSoftwareAndVSync)
+
+        # If not, remove the current display and deactivate Vsync
+        elif not active:
+            if len(current_displays) == 1:
+                self.application.remove(current_displays[0])
+            self.application.setSyncMode(Vortex.kSyncNone)
+
+    def _set_app_mode(self, app_mode: AppMode):
+        vxatp3.VxATPUtils.requestApplicationModeChangeAndWait(self.application, app_mode.value)
