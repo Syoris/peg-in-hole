@@ -5,16 +5,10 @@ import ctypes
 from settings import APP_SETTINGS
 from pathlib import Path
 
+from vortex_envs.vortex_interface import VortexInterface
 
-class Vector3(ctypes.Structure):
-    _fields_ = ('x', ctypes.c_double), ('y', ctypes.c_double), ('z', ctypes.c_double)
-
-    def __repr__(self):
-        return '({0}, {1}, {2})'.format(self.x, self.y, self.z)
-
-
-class Vector4(ctypes.Structure):
-    _fields_ = ('x', ctypes.c_double), ('y', ctypes.c_double), ('z', ctypes.c_double), ('w', ctypes.c_double)
+import Vortex
+import vxatp3
 
 
 class KinovaGen2Env(gym.Env):
@@ -142,51 +136,11 @@ class KinovaGen2Env(gym.Env):
         # self.display.getInput(Vortex.DisplayICD.kPlacement).setValue(Vortex.VxVector4(50, 50, 1280, 720))
 
         ##
-        dll_path = APP_SETTINGS.vortex_installation_path / 'bin' / 'VortexIntegration.dll'
-        vxDLL = ctypes.WinDLL(str(dll_path))
-
-        """ declare function inputs and outputs so that they are called correctly (necessary for Python 3 calling C functions) """
-        vxDLL.VortexLoadScene.restype = ctypes.c_void_p
-        vxDLL.VortexGetChildByName.restype = ctypes.c_void_p
-        vxDLL.VortexGetChildByName.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        vxDLL.VortexSetInputReal.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_double]
-        vxDLL.VortexGetOutputReal.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_char_p,
-            ctypes.POINTER(ctypes.c_double),
-        ]
-        vxDLL.VortexGetOutputVector3.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_char_p,
-            ctypes.POINTER(Vector3),
-        ]
-        vxDLL.VortexGetOutputMatrix.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_char_p,
-            ctypes.c_char_p,
-            ctypes.POINTER(Vector3),
-            ctypes.POINTER(Vector4),
-        ]
-        vxDLL.VortexUnloadScene.argtypes = [ctypes.c_void_p]
-
-        self.vxDLL = vxDLL
-        # setup_path = 'src/vortex_envs/vortex_resources/config_withoutgraphics.vxc'
-        setup_path = (
-            'C:/Users/charl/Local Documents/git/peg-in-hole/src/vortex_envs/vortex_resources/config_withoutgraphics.vxc'
-        )
-
-        setup_path = '/src/vortex_envs/vortex_resources/config_withoutgraphics.vxc'
 
         # self.vxDLL.VortexCreateApplication(setup_path.encode('ascii'), '', '', '', None)
-
-        self.vxDLL.VortexCreateApplication(str(self.setup_file).encode('ascii'), '', '', '', None)
-
-        self.scene = self.vxDLL.VortexLoadScene(str(self.content_file).encode('ascii'))
-
-        if self.scene is None or self.scene == 0:
-            raise RuntimeError('Scene not properly loaded')
+        self.vx_interface = VortexInterface()
+        self.vx_interface.create_application(self.setup_file)
+        self.vx_interface.load_scene(self.content_file)
 
         self.vxDLL.VortexSetInputReal(
             self.scene,
