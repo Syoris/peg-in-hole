@@ -46,9 +46,11 @@ class VortexInterface:
         if not USE_VORTEX_API:
             self._init_vx_dll()
 
+        self.saved_key_frame = None
+
     def __del__(self):
         # Destroy the VxApplication when done
-        self.application = None
+        self.app = None
 
     def _init_vx_dll(self):
         """To load the vortex dll and setup its functions types"""
@@ -85,16 +87,16 @@ class VortexInterface:
     def create_application(self, setup_file: Path, application_name: str = 'Vortex App'):
         if USE_VORTEX_API:
             setup_file_str = str(setup_file)
-            self.application = vxatp3.VxATPConfig.createApplication(self, application_name, setup_file_str)
-            self._set_app_mode(AppMode.EDITING)
+            self.app = vxatp3.VxATPConfig.createApplication(self, application_name, setup_file_str)
+            self.set_app_mode(AppMode.EDITING)
 
         else:
-            self.application = self.vx_dll.VortexCreateApplication(str(setup_file).encode('ascii'), '', '', '', None)
+            self.app = self.vx_dll.VortexCreateApplication(str(setup_file).encode('ascii'), '', '', '', None)
 
     def load_scene(self, scene_file: Path):
         if USE_VORTEX_API:
             scene_file_str = str(scene_file)
-            self.scene = self.application.getSimulationFileManager().loadObject(scene_file_str)
+            self.scene = self.app.getSimulationFileManager().loadObject(scene_file_str)
 
             # Get the RL Interface VHL
             self.interface = self.scene.findExtensionByName('ML Interface')
@@ -112,6 +114,8 @@ class VortexInterface:
         self.display.getInput(Vortex.DisplayICD.kPlacementMode).setValue('Windowed')
         self.display.setName('Display')
         self.display.getInput(Vortex.DisplayICD.kPlacement).setValue(Vortex.VxVector4(50, 50, 1280, 720))
+
+    """ Setter/Getter"""
 
     def set_parameter(self, field_name: str, field_value):
         self.interface.getParameterContainer()[field_name].value = field_value
@@ -133,20 +137,55 @@ class VortexInterface:
 
         return val
 
+    def set_app_mode(self, app_mode: AppMode):
+        vxatp3.VxATPUtils.requestApplicationModeChangeAndWait(self.app, app_mode.value)
+
+    """ Other """
+
     def render_display(self, active=True):
         # Find current list of displays
-        current_displays = self.application.findExtensionsByName('Display')
+        current_displays = self.app.findExtensionsByName('Display')
 
         # If active, add a display and activate Vsync
         if active and len(current_displays) == 0:
-            self.application.add(self.display)
-            self.application.setSyncMode(Vortex.kSyncSoftwareAndVSync)
+            self.app.add(self.display)
+            self.app.setSyncMode(Vortex.kSyncSoftwareAndVSync)
 
         # If not, remove the current display and deactivate Vsync
         elif not active:
             if len(current_displays) == 1:
-                self.application.remove(current_displays[0])
-            self.application.setSyncMode(Vortex.kSyncNone)
+                self.app.remove(current_displays[0])
+            self.app.setSyncMode(Vortex.kSyncNone)
 
-    def _set_app_mode(self, app_mode: AppMode):
-        vxatp3.VxATPUtils.requestApplicationModeChangeAndWait(self.application, app_mode.value)
+    def save_current_frame(self):
+        """To save the current key frame"""
+        self.set_app_mode(AppMode.SIMULATING)
+        self.key_frame_list = self.app.getContext().getKeyFrameManager().createKeyFrameList('ResetFrameList', False)
+        self.app.update()
+
+        self.key_frame_list.saveKeyFrame()
+        self._wait_for_n_key_frames(1)
+        self.saved_key_frame = self.key_frame_list.getKeyFrames()[0]
+
+    def reset_saved_frame(self):
+        if self.saved_key_frame is None:
+            raise RuntimeError('No saved frame. VortexInterface.save_current_frame my be called before this.')
+
+        self.set_app_mode(AppMode.SIMULATING)
+
+        # Load first key frame
+        self.key_frame_list.restore(self.saved_key_frame)
+        self.app.update()
+
+    def _wait_for_n_key_frames(self, n_frames):
+        """Wait until there are n_frames in self.key_frame_list
+
+        Args:
+            n_frames (int):
+        """
+        maxNbIter = 100
+        nbIter = 0
+        while len(self.key_frame_list.getKeyFrames()) != n_frames and nbIter < maxNbIter:
+            if not self.app.update():
+                break
+            ++nbIter

@@ -10,6 +10,22 @@ from vortex_envs.vortex_interface import VortexInterface, AppMode
 
 """ Names in vortex scene """
 
+""" 
+TODO
+- Add logger
+- Robot settings to yaml
+- render option
+- Update function
+    - Get sim time
+    - Send command
+    - Read outputs
+    - Log everything in json file
+- Vortex log
+    - Deactivate or specify path
+"""
+
+""" Vortex Scene Inputs, Outputs and Parameters"""
+
 
 class VX_Inputs(BaseModel):
     j2_vel_id: str = 'j2_vel_id'
@@ -38,6 +54,8 @@ class VX_Outputs(BaseModel):
 
 
 VX_OUT = VX_Outputs()
+
+""" Kinova Robot Interface """
 
 
 class KinovaGen2Env(gym.Env):
@@ -166,18 +184,24 @@ class KinovaGen2Env(gym.Env):
         # Create a display window
         self.vx_interface.load_display()
 
+        # Initialize Robot position
+        self.go_to_home()
+
         # Set parameters values
-        for field, field_value in {**self.joints_range}.items():  # {**self.joints_range, **self.forces_range}.items():
+        self.vx_interface.set_app_mode(AppMode.EDITING)
+        for field, field_value in {**self.joints_range, **self.forces_range}.items():
             self.vx_interface.set_parameter(field, field_value)
 
-        self.go_to_home()
+        self.vx_interface.save_current_frame()
+
+        self.vx_interface.set_app_mode(AppMode.SIMULATING)
 
     def go_to_home(self):
         """
         To bring the peg on top of the hole
         """
-        self.vx_interface._set_app_mode(AppMode.SIMULATING)
-        self.vx_interface.application.pause(False)
+        self.vx_interface.set_app_mode(AppMode.SIMULATING)
+        self.vx_interface.app.pause(False)
 
         """Phase 1"""
         """ set joint velocities to initialize """
@@ -194,12 +218,12 @@ class KinovaGen2Env(gym.Env):
 
         """ step the Vortex simulation """
         for i in range(self.init_steps):
-            self.vx_interface.application.update()
+            self.vx_interface.app.update()
 
-            # obs = self._readJvel()
-            # width = 10
-            # precision = 4
-            # print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
+            obs = self._readJtorque()
+            width = 10
+            precision = 4
+            print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
 
         """ Read reference position and rotation """
         th_current = self._readJpos()
@@ -212,7 +236,7 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.set_input(VX_IN.j6_vel_id, 0)
 
         for i in range(self.pause_steps):
-            self.vx_interface.application.update()
+            self.vx_interface.app.update()
 
         """ Phase 2 (move downwards quickly and also make the tips aligned with the hole) """
         for i in range(self.pre_insert_steps):
@@ -221,7 +245,12 @@ class KinovaGen2Env(gym.Env):
 
             self._send_joint_target_vel(self.cur_j_vel)
 
-            self.vx_interface.application.update()
+            self.vx_interface.app.update()
+
+            obs = self._readJtorque()
+            width = 10
+            precision = 4
+            print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
 
         th_current = self._readJpos()
         pos_current = self._read_tips_pos_fk(th_current)
@@ -232,7 +261,7 @@ class KinovaGen2Env(gym.Env):
         self._send_joint_target_vel(np.array([0.0, 0.0, 0.0]))
 
         for i in range(self.pause_steps):
-            self.vx_interface.application.update()
+            self.vx_interface.app.update()
 
     def step(self, action):
         # Apply actions
@@ -241,7 +270,7 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.set_input('j6_vel_id', action[2])
 
         # Step the simulation
-        self.vx_interface.application.update()
+        self.vx_interface.app.update()
 
         # Observations
         obs = self._get_obs()
@@ -258,7 +287,7 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.render_display()
 
     def reset(self):
-        ...
+        self.vx_interface.reset_saved_frame()
 
     """ Vortex interface functions """
 

@@ -7,7 +7,7 @@ def run_vortex():
     "test function"
     kinova_env = KinovaGen2Env()
 
-    n_steps = 100
+    n_steps = 10
 
     for ep in range(n_steps):
         kinova_env.render()
@@ -22,6 +22,8 @@ def run_vortex():
         precision = 4
         print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
         ...
+
+    kinova_env.reset()
 
     del kinova_env
 
