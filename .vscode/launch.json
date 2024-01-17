@@ -8,7 +8,7 @@
             "name": "main",
             "type": "python",
             "request": "launch",
-            "program": "src/main.py",
+            "program": "peg_in_hole/main.py",
             "console": "integratedTerminal",
             "justMyCode": true
         }

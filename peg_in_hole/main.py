@@ -1,9 +1,13 @@
-from settings import APP_SETTINGS
-from vortex_envs.kinova_gen2_env import KinovaGen2Env
+from settings import app_settings
+from peg_in_hole.vortex_envs.kinova_gen2_env import KinovaGen2Env
 import time
+import logging
+import traceback
+
+logger = logging.getLogger(__name__)
 
 
-def run_vortex():
+def train_ddpg():
     "test function"
     kinova_env = KinovaGen2Env()
 
@@ -29,10 +33,13 @@ def run_vortex():
 
 
 if __name__ == '__main__':
-    print('---------------- Peg-in-hole Package ----------------')
-    print('Application settings:')
-    print(APP_SETTINGS.model_dump())
+    logger.info('---------------- Peg-in-hole Package ----------------')
+    try:
+        train_ddpg()
+    except RuntimeError as e:
+        logger.error(e, exc_info=True)
 
-    run_vortex()
+    except:  # noqa
+        logger.error('uncaught exception: %s', traceback.format_exc())
 
-    print('Done')
+    logger.info('Done')
