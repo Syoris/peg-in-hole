@@ -1,5 +1,5 @@
-from settings import APP_SETTINGS
-from vortex_envs.kinova_gen2_env import KinovaGen2Env
+from settings import app_settings
+from peg_in_hole.vortex_envs.kinova_gen2_env import KinovaGen2Env
 import time
 
 
@@ -31,7 +31,7 @@ def run_vortex():
 if __name__ == '__main__':
     print('---------------- Peg-in-hole Package ----------------')
     print('Application settings:')
-    print(APP_SETTINGS.model_dump())
+    print(app_settings.model_dump())
 
     run_vortex()
 

@@ -5,7 +5,7 @@ description = ""
 authors = ["Charles <charles.sirois2@mail.mcgill.ca>"]
 readme = "README.md"
 packages = [
-    { include = "src" },
+    { include = "peg_in_hole" },
 ]
 
 [tool.poetry.dependencies]

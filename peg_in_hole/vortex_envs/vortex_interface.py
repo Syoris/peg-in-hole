@@ -7,7 +7,7 @@ I dont know where the dll's doc can be found
 """
 import ctypes
 from pathlib import Path
-from settings import APP_SETTINGS
+from settings import app_settings
 from enum import Enum
 
 USE_VORTEX_API = True  # To use vortex api library or the dll. Vortex api only works w/ python 3.8
@@ -54,7 +54,7 @@ class VortexInterface:
 
     def _init_vx_dll(self):
         """To load the vortex dll and setup its functions types"""
-        dll_path = APP_SETTINGS.vortex_installation_path / 'bin' / 'VortexIntegration.dll'
+        dll_path = app_settings.vortex_installation_path / 'bin' / 'VortexIntegration.dll'
 
         self.vx_dll = ctypes.WinDLL(str(dll_path))
 

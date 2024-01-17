@@ -2,11 +2,11 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import ctypes
-from settings import APP_SETTINGS
+from settings import app_settings
 from pathlib import Path
 from pydantic import BaseModel
 
-from vortex_envs.vortex_interface import VortexInterface, AppMode
+from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
 
 """ Names in vortex scene """
 
@@ -169,11 +169,10 @@ class KinovaGen2Env(gym.Env):
         self.Ltip = 0.16  # from edge of End-Effector to tip of peg, in metres
 
         # # Define the setup and mechanism file paths
-        env_folder_rel_path = Path('src/vortex_envs/vortex_resources')
-        self.setup_file = env_folder_rel_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
+        self.setup_file = app_settings.vortex_resources_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
         # self.setup_file = env_folder_rel_path / 'config_withoutgraphics.vxc'  # 'config_withoutgraphics.vxc'
 
-        self.content_file = env_folder_rel_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
+        self.content_file = app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
 
         # # Create the Vortex Application
         self.vx_interface = VortexInterface()
