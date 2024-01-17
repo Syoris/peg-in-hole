@@ -10,6 +10,7 @@ import logging
 from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
 
 logger = logging.getLogger(__name__)
+robot_logger = logging.getLogger('robot_state')
 
 """ Names in vortex scene """
 
@@ -304,12 +305,15 @@ class KinovaGen2Env(gym.Env):
 
         self.time_step = self.vx_interface.app.getSimulationTime()
         self.obs = self._get_obs()
+        # log_dict = {'sim_time': self.time_step, 'action': self.action, 'obs': self.obs}
 
-        width = 10
-        precision = 4
-        print(
-            f'| {self.time_step:^{width}.{3}f} | {self.obs[0]:^{width}.{precision}f} | {self.action[0]:^{width}.{precision}f} | {self.obs[3]:^{width}.{precision}f} | {self.obs[6]:^{width}.{precision}f} |'
-        )
+        # robot_logger.debug('', extra=log_dict)
+
+        # width = 10
+        # precision = 4
+        # print(
+        #     f'| {self.time_step:^{width}.{3}f} | {self.obs[0]:^{width}.{precision}f} | {self.action[0]:^{width}.{precision}f} | {self.obs[3]:^{width}.{precision}f} | {self.obs[6]:^{width}.{precision}f} |'
+        # )
 
     def _get_obs(self):
         joint_poses = self._readJpos()
