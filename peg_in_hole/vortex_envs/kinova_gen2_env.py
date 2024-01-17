@@ -116,10 +116,22 @@ class KinovaGen2Env(gym.Env):
         )
 
         # Action Space
-        ...
+        self.max_j2_vel, self.min_j2_vel = 1.0, -1.0
+        self.max_j4_vel, self.min_j4_vel = 1.0, -1.0
+
+        self.action_space = spaces.Box(
+            low=np.array([self.min_j2_vel, self.min_j4_vel]),
+            high=np.array([self.max_j2_vel, self.max_j4_vel]),
+            shape=(2,),
+            dtype=np.float32,
+        )
+
+        self.action_coeff = 0.01  # coefficient the action will be multiplied by
 
         # Reward
-        ...
+        self.reward_min_threshold = -5.0  # NOT CURRENTLY USED
+        self.min_height_threshold = 0.005  # NOT CURRENTLY USED
+        self.reward_weight = 0.04
 
         self.next_j_vel = np.zeros(3)
         self.prev_j_vel = np.zeros(3)
@@ -211,6 +223,9 @@ class KinovaGen2Env(gym.Env):
 
         self.vx_interface.set_app_mode(AppMode.SIMULATING)
 
+        self.sim_completed = False
+        self.nStep = 0
+
     def go_to_home(self):
         """
         To bring the peg on top of the hole
@@ -268,28 +283,52 @@ class KinovaGen2Env(gym.Env):
             self.update()
 
     def step(self, action):
+        self.prev_j_vel = self.next_j_vel
+        self.next_j_vel = self._get_ik_vels(self.insertz, self.nStep, step_types=self.insertion_steps)
+
+        j2_vel = self.next_j_vel[0] - self.action_coeff * action[0]
+        j4_vel = self.next_j_vel[1] + self.action_coeff * action[1] - self.action_coeff * action[0]
+        j6_vel = self.next_j_vel[2] + self.action_coeff * action[1]
+
         # Apply actions
-        self.action = action
+        self.action = np.array([j2_vel, j4_vel, j6_vel])
 
         # Step the simulation
         self.update()
 
         # Observations
-        obs = self._get_obs()
-
-        # Done flag
-        ...
+        self.obs = self._get_obs()
 
         # Reward
-        reward = ...
+        reward = self._get_reward()
 
-        return obs
+        # Done flag
+        self.nStep += 1
+        if self.nStep >= self.insertion_steps:
+            self.sim_completed = True
+
+        return self.obs, reward, self.sim_completed, False, {}
 
     def render(self):
         self.vx_interface.render_display()
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
+
+        self.insertion_misalign = (np.pi / 180.0) * (
+            np.random.uniform(self.min_misalign, self.max_misalign)
+        )  # joint 6 misalignment, negative and positive
+        print('Insertion misalignment: ' + str(self.insertion_misalign))
+
         self.vx_interface.reset_saved_frame()
+
+        self.nStep = 0
+        self.sim_completed = False
+
+        info = {}
+
+        return self._get_obs(), info
 
     """ Vortex interface functions """
 
@@ -340,7 +379,7 @@ class KinovaGen2Env(gym.Env):
         # if abs(self.joint_torques[2])>2.0:
         #   print("Joint 6 torque: {}".format(self.joint_torques[2]))
 
-        return np.concatenate((joint_poses, joint_vel, joint_torques))
+        return np.concatenate((joint_torques, joint_vel, self.next_j_vel))
         # return [j2_pos_real, j4_pos_real, j6_pos_real]
 
     def _readJpos(self):
@@ -371,11 +410,11 @@ class KinovaGen2Env(gym.Env):
 
         return np.array([j2_target, j4_target, j6_target])
 
-    def _get_plug_force(self):
+    def get_plug_force(self):
         plug_force = self.vx_interface.get_output(VX_OUT.plug_force)
         return plug_force
 
-    def _get_plug_torque(self):
+    def get_plug_torque(self):
         plug_torque = self.vx_interface.get_output(VX_OUT.plug_torque)
         return plug_torque
 
@@ -385,6 +424,22 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.set_input(VX_IN.j6_vel_id, target_vels[2])
 
     """ Utilities """
+
+    def _get_reward(self):
+        j2_id = self.next_j_vel[0]
+        j4_id = self.next_j_vel[1]
+        j6_id = self.next_j_vel[2]
+
+        #  reward = self.reward_weight*(-abs((shv_id-shv)*self.shoulder_torque.value)-abs((elv_id-elv)*self.elbow_torque.value)-abs((wrv_id-wrv)*self.wrist_torque.value))
+        joint_vels = self.obs[3:6]
+        joint_torques = self.obs[0:3]
+
+        reward = self.reward_weight * (
+            -abs((j2_id - joint_vels[0]) * joint_torques[0])
+            - abs((j4_id - joint_vels[1]) * joint_torques[1])
+            - abs((j6_id - joint_vels[2]) * joint_torques[2])
+        )
+        return reward
 
     def _get_ik_vels(self, down_speed, cur_count, step_types):
         th_current = self._readJpos()
