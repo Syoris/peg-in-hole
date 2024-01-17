@@ -3,6 +3,7 @@ import sys
 from pydantic_settings import BaseSettings
 from pydantic import DirectoryPath, Field, field_validator, ValidationInfo
 from pathlib import Path
+import logging.config
 
 
 def get_package_dir() -> Path:
@@ -44,3 +45,4 @@ class Settings(BaseSettings):
 
 
 app_settings = Settings()
+logging.config.fileConfig(app_settings.cfg_path / 'logging.ini', disable_existing_loggers=False)

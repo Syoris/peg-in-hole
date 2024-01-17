@@ -1,6 +1,9 @@
 from settings import app_settings
 from peg_in_hole.vortex_envs.kinova_gen2_env import KinovaGen2Env
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def run_vortex():
@@ -29,10 +32,8 @@ def run_vortex():
 
 
 if __name__ == '__main__':
-    print('---------------- Peg-in-hole Package ----------------')
-    print('Application settings:')
-    print(app_settings.model_dump())
+    logger.info('---------------- Peg-in-hole Package ----------------')
 
     run_vortex()
 
-    print('Done')
+    logger.info('Done')

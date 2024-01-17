@@ -5,8 +5,11 @@ import ctypes
 from settings import app_settings
 from pathlib import Path
 from pydantic import BaseModel
+import logging
 
 from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
+
+logger = logging.getLogger(__name__)
 
 """ Names in vortex scene """
 
