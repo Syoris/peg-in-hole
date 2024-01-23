@@ -63,9 +63,9 @@ VX_OUT = VX_Outputs()
 
 
 class KinovaGen2Env(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {'render_modes': ['human']}
 
-    def __init__(self):
+    def __init__(self, render_mode=None):
         """
         Observation space (9 observations: torque, ideal velocity, actual velocity, for each of 3 joints)
         """
@@ -201,8 +201,17 @@ class KinovaGen2Env(gym.Env):
 
         self.vx_interface.load_scene(self.content_file)
 
+        # Rendering
+        assert render_mode is None or render_mode in self.metadata['render_modes']
+        self.render_mode = render_mode
+
         # Create a display window
         self.vx_interface.load_display()
+        if self.render_mode == 'human':
+            self.vx_interface.render_display(active=True)
+
+        else:
+            self.vx_interface.render_display(active=False)
 
         # Print vars
         width = 10

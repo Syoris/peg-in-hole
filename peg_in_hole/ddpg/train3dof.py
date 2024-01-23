@@ -1,9 +1,6 @@
-from settings import app_settings
 import time
 import logging
-import traceback
 import tensorflow as tf
-import matplotlib.pyplot as plt
 import gymnasium as gym
 import numpy as np
 
@@ -12,6 +9,8 @@ from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.vortex_envs.vortex_interface  # noqa: F401 Needed to register env to gym
 
 logger = logging.getLogger(__name__)
+
+RENDER = True
 
 
 def policy(state, noise_object, actor_model, lower_bound, upper_bound):
@@ -29,7 +28,12 @@ def policy(state, noise_object, actor_model, lower_bound, upper_bound):
 
 def train3dof():
     env_name = 'vxUnjamming-v0'
-    env = gym.make(env_name)
+    if RENDER:
+        render_mode = 'human'
+    else:
+        render_mode = None
+
+    env = gym.make(env_name, render_mode=render_mode)
 
     num_states = env.observation_space.shape[0]
     print('Size of State Space ->  {}'.format(num_states))
@@ -117,10 +121,10 @@ def train3dof():
             # Recieve state and reward from environment.
             state, reward, done, truncated, info = env.step(action)
 
-            force = env.get_plug_force()
+            force = env.unwrapped.get_plug_force()
             force_norm = np.sqrt(force.x**2.0 + force.y**2.0 + force.z**2.0)
 
-            torque = env.get_plug_torque()
+            torque = env.unwrapped.get_plug_torque()
             torque_norm = np.sqrt(torque.x**2.0 + torque.y**2.0 + torque.z**2.0)
 
             buffer.record((prev_state, action, reward, state))
@@ -163,7 +167,7 @@ def train3dof():
         avg_torque_list.append(avg_torque)
 
         # End depth for this episode
-        insert_depth = env.get_insertion_depth()
+        insert_depth = env.unwrapped.get_insertion_depth()
         print('Episode * {} * Insertion Height is ==> {}'.format(ep, insert_depth))
         print('')
         end_depth_list.append(insert_depth)
