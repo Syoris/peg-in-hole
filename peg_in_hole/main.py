@@ -1,45 +1,38 @@
 from settings import app_settings
-from peg_in_hole.vortex_envs.kinova_gen2_env import KinovaGen2Env
-import time
 import logging
 import traceback
+import hydra
+from omegaconf import DictConfig
+
+from peg_in_hole.ddpg.train3dof import train3dof
+
+"""
+Time comp:
+For 50 steps, w/ rendering
+old code: 207.0949604511261 [4.141899209022522 avg.]
+new code: 113.9709882736206 [2.279419765472412 avg.]
+new version: 
+"""
 
 logger = logging.getLogger(__name__)
 
 
-def train_ddpg():
-    "test function"
-    kinova_env = KinovaGen2Env()
+@hydra.main(version_base=None, config_name='config', config_path='../cfg')
+def main(cfg: DictConfig):
+    logger.info('---------------- Peg-in-hole Package ----------------')
 
-    n_steps = 10
+    try:
+        train3dof()
+    except RuntimeError as e:
+        logger.error(e, exc_info=True)
+        raise e
 
-    for ep in range(n_steps):
-        kinova_env.render()
+    except Exception as e:  # noqa
+        logger.error('uncaught exception: %s', traceback.format_exc())
+        raise e
 
-        # kinova_env.reset()
-
-        action = [5, 10, 15]
-
-        obs = kinova_env.step(action)
-
-        width = 10
-        precision = 4
-        print(f'{obs[0]:^{width}.{precision}f} | {obs[1]:^{width}.{precision}f} | {obs[2]:^{width}.{precision}f}')
-        ...
-
-    kinova_env.reset()
-
-    del kinova_env
+    logger.info('Done')
 
 
 if __name__ == '__main__':
-    logger.info('---------------- Peg-in-hole Package ----------------')
-    try:
-        train_ddpg()
-    except RuntimeError as e:
-        logger.error(e, exc_info=True)
-
-    except:  # noqa
-        logger.error('uncaught exception: %s', traceback.format_exc())
-
-    logger.info('Done')
+    main()

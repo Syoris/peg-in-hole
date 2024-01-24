@@ -2,12 +2,14 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import ctypes
-from settings import app_settings
 from pathlib import Path
 from pydantic import BaseModel
 import logging
+from omegaconf import OmegaConf
 
+from peg_in_hole.settings import app_settings
 from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
+from peg_in_hole.vortex_envs.robot_schema_config import KinovaConfig
 
 logger = logging.getLogger(__name__)
 robot_logger = logging.getLogger('robot_state')
@@ -37,9 +39,6 @@ class VX_Inputs(BaseModel):
     j6_vel_id: str = 'j6_vel_id'
 
 
-VX_IN = VX_Inputs()
-
-
 class VX_Outputs(BaseModel):
     hand_pos_rot: str = 'hand_pos_rot'
     j2_pos_real: str = 'j2_pos_real'
@@ -57,73 +56,79 @@ class VX_Outputs(BaseModel):
     plug_torque: str = 'plug_torque'
 
 
+VX_IN = VX_Inputs()
 VX_OUT = VX_Outputs()
+
 
 """ Kinova Robot Interface """
 
 
 class KinovaGen2Env(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {'render_modes': ['human']}
 
-    def __init__(self):
-        """
-        Observation space (9 observations: torque, ideal velocity, actual velocity, for each of 3 joints)
-        """
+    def __init__(self, render_mode=None):
+        """Load config"""
+        self._get_robot_config()
 
-        self.action = np.array([0.0, 0.0, 0.0])
-        self.obs = np.zeros(9)
         self.time_step = 0.0
 
-        # TODO: To yaml and pydantic dataclass
-        self.max_j2_t, self.min_j2_t = 500.0, -500.0
-        self.max_j4_t, self.min_j4_t = 500.0, -500.0
-        self.max_j6_t, self.min_j6_t = 500.0, -500.0
-        self.max_j2_v, self.min_j2_v = 1.0, -1.0
-        self.max_j4_v, self.min_j4_v = 1.0, -1.0
-        self.max_j6_v, self.min_j6_v = 1.0, -1.0
-        self.max_j2_v_id, self.min_j2_v_id = 1.0, -1.0
-        self.max_j4_v_id, self.min_j4_v_id = 1.0, -1.0
-        self.max_j6_v_id, self.min_j6_v_id = 1.0, -1.0
+        """ Observation space (12 observations: position, vel, ideal vel, torque, for each of 3 joints) """
+        self.obs = np.zeros(12)
+
+        # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
+        # Each one is 1x(n_joints). Total size: 4*(n_joints)
+        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
+        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
+        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
+        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
+        torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
+        torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
+
+        # Minimum and Maximum joint position limits (in deg)
+        self.joints_range = {}
+        self.joints_range['j2_pos_min'], self.joints_range['j2_pos_max'] = (pos_min[0], pos_max[0])
+        self.joints_range['j4_pos_min'], self.joints_range['j4_pos_max'] = (pos_min[1], pos_max[1])
+        self.joints_range['j6_pos_min'], self.joints_range['j6_pos_max'] = (pos_min[2], pos_max[2])
+
+        # Minimum and Maximum joint force/torque limits (in N*m)
+        self.forces_range = {}
+        self.forces_range['j2_for_min'], self.forces_range['j2_for_max'] = (torque_min[0], torque_max[0])
+        self.forces_range['j4_for_min'], self.forces_range['j4_for_max'] = (torque_min[1], torque_max[1])
+        self.forces_range['j6_for_min'], self.forces_range['j6_for_max'] = (torque_min[2], torque_max[2])
+
+        obs_low_bound = np.concatenate((pos_min, vel_min, vel_min, torque_min))
+        obs_high_bound = np.concatenate((pos_max, vel_max, vel_max, torque_max))
+
         self.observation_space = spaces.Box(
-            low=np.array(
-                [
-                    self.min_j2_t,
-                    self.min_j4_t,
-                    self.min_j6_t,
-                    self.min_j2_v,
-                    self.min_j4_v,
-                    self.min_j6_v,
-                    self.min_j2_v_id,
-                    self.min_j4_v_id,
-                    self.min_j6_v_id,
-                ]
-            ),
-            high=np.array(
-                [
-                    self.max_j2_t,
-                    self.max_j4_t,
-                    self.max_j6_t,
-                    self.max_j2_v,
-                    self.max_j4_v,
-                    self.max_j6_v,
-                    self.max_j2_v_id,
-                    self.max_j4_v_id,
-                    self.max_j6_v_id,
-                ]
-            ),
-            shape=(9,),
-            dtype=np.float32,
+            low=obs_low_bound,
+            high=obs_high_bound,
+            dtype=np.float64,
         )
 
-        # Action Space
-        ...
+        """ Action space (2 actions: j2 aug, j6, aug) """
+        self.action = np.array([0.0, 0.0])  # Action outputed by RL
+        self.command = np.array([0.0, 0.0, 0.0])  # Vel command to send to the robot
+
+        self.next_j_vel = np.zeros(3)  # Next target vel
+        self.prev_j_vel = np.zeros(3)  # Prev target vel
+
+        act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
+        act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
+        self.action_space = spaces.Box(
+            low=act_low_bound,
+            high=act_high_bound,
+            dtype=np.float64,
+        )
+
+        """ RL Hyperparameters """
+        self.action_coeff = 0.01  # coefficient the action will be multiplied by
 
         # Reward
-        ...
+        self.reward_min_threshold = -5.0  # NOT CURRENTLY USED
+        self.min_height_threshold = 0.005  # NOT CURRENTLY USED
+        self.reward_weight = 0.04
 
-        self.next_j_vel = np.zeros(3)
-        self.prev_j_vel = np.zeros(3)
-
+        """ Sim Hyperparameters """
         # TODO: To YAML and pydantic data class
         # Vortex
         self.h = 1.0 / 100.0  # Simulation time step
@@ -148,49 +153,32 @@ class KinovaGen2Env(gym.Env):
         self.pre_insertz = 0.44  # z distance to be covered in pre-insertion phase
         self.insertz = 0.07  # z distance to be covered in insertion phase, though may change with actions
 
-        # TODO: To YAML and pydantic data class
-        # Minimum and Maximum joint position limits (in radians)
-        self.joints_range = {}
-        self.joints_range['j2_pos_min'], self.joints_range['j2_pos_max'] = (
-            -360,  # * (np.pi / 180.0),
-            360,  # * (np.pi / 180.0),
-        )
-        self.joints_range['j4_pos_min'], self.joints_range['j4_pos_max'] = (
-            -360,  # * (np.pi / 180.0),
-            360,  # * (np.pi / 180.0),
-        )
-        self.joints_range['j6_pos_min'], self.joints_range['j6_pos_max'] = (
-            -360,  # * (np.pi / 180.0),
-            360,  # * (np.pi / 180.0),
-        )
+        """ Robot Parameters """
+        # Link lengths
+        self.L12 = self.robot_cfg.links_length.L12  # from base to joint 2, [m] 0.2755
+        self.L34 = self.robot_cfg.links_length.L34  # from joint 2 to joint 4, [m], 0.410
+        self.L56 = self.robot_cfg.links_length.L56  # from joint 4 to joint 6, [m], 0.3111
+        self.L78 = self.robot_cfg.links_length.L78  # from joint 6 to edge of EE where peg is attached, [m], 0.2188
+        self.Ltip = self.robot_cfg.links_length.Ltip  # from edge of End-Effector to tip of peg, [m], 0.16
 
-        # Minimum and Maximum joint force/torque limits (in N*m)
-        self.forces_range = {}
-        self.forces_range['j2_for_min'], self.forces_range['j2_for_max'] = -14.0, 14.0
-        self.forces_range['j4_for_min'], self.forces_range['j4_for_max'] = -5.0, 5.0
-        self.forces_range['j6_for_min'], self.forces_range['j6_for_max'] = -2.0, 2.0
-
-        # Link lengths #
-        self.L12 = 0.2755  # from base to joint 2, in metres
-        self.L34 = 0.410  # from joint 2 to joint 4, in metres
-        self.L56 = 0.3111  # from joint 4 to joint 6, in metres
-        self.L78 = 0.2188  # from joint 6 to edge of End-Effector where peg is attached, in metres
-        self.Ltip = 0.16  # from edge of End-Effector to tip of peg, in metres
-
-        # # Define the setup and mechanism file paths
+        """ Load Vortex Scene """
+        # Define the setup and scene file paths
         self.setup_file = app_settings.vortex_resources_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
-        # self.setup_file = env_folder_rel_path / 'config_withoutgraphics.vxc'  # 'config_withoutgraphics.vxc'
-
         self.content_file = app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
 
-        # # Create the Vortex Application
+        # Create the Vortex Application
         self.vx_interface = VortexInterface()
         self.vx_interface.create_application(self.setup_file)
 
         self.vx_interface.load_scene(self.content_file)
 
+        # Rendering
+        assert render_mode is None or render_mode in self.metadata['render_modes']
+        self.render_mode = render_mode
+
         # Create a display window
         self.vx_interface.load_display()
+        self.vx_interface.render_display(active=(self.render_mode == 'human'))
 
         # Print vars
         width = 10
@@ -199,7 +187,7 @@ class KinovaGen2Env(gym.Env):
         )
 
         # Initialize Robot position
-        self.go_to_home()
+        self.go_home()
 
         # Set parameters values. Done after going home so its not limited by joint torques
         self.vx_interface.set_app_mode(AppMode.EDITING)
@@ -211,39 +199,42 @@ class KinovaGen2Env(gym.Env):
 
         self.vx_interface.set_app_mode(AppMode.SIMULATING)
 
-    def go_to_home(self):
+        self.sim_completed = False
+        self.nStep = 0
+
+    def _get_robot_config(self):
+        config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
+        # config_path = 'cfg/tasks/Insert_Kinova3DoF.yaml'
+        self.robot_cfg = OmegaConf.load(config_path)
+
+    def go_home(self):
         """
         To bring the peg on top of the hole
         """
         self.vx_interface.set_app_mode(AppMode.SIMULATING)
         self.vx_interface.app.pause(False)
 
-        """Phase 1"""
-        """ set joint velocities to initialize """
+        """ Phase 1 """
+        # Set joint velocities to initialize
         self.update()
 
         j4_vel_id = (np.pi / 180.0) * 90.0 / self.t_init_step
         # j6_vel_id = self.insertion_misalign / self.t_init_step
-        self.action = np.array([0.0, j4_vel_id, 0.0])
-
-        # print(f'Vel target: {self._readJvel_target()}')
-        # print(f'Start torque: {self._readJtorque()}')
+        self.command = np.array([0.0, j4_vel_id, 0.0])
         # print(f'Start vel: {self._readJvel()}')
 
-        """ step the Vortex simulation """
+        # Step the Vortex simulation
         for i in range(self.init_steps):
             self.update()
 
-        """ Read reference position and rotation """
+        # Read reference position and rotation
         th_current = self._readJpos()
         pos_current = self._read_tips_pos_fk(th_current)
         print('X after Phase 1:')
         print(pos_current[0])
 
-        """ Phase 1 pause """
-        self.action = np.array([0.0, 0.0, 0.0])
-        # self.vx_interface.set_input(VX_IN.j4_vel_id, 0)
-        # self.vx_interface.set_input(VX_IN.j6_vel_id, 0)
+        # Phase 1 pause
+        self.command = np.array([0.0, 0.0, 0.0])
 
         for i in range(self.pause_steps):
             self.update()
@@ -252,7 +243,7 @@ class KinovaGen2Env(gym.Env):
         for i in range(self.pre_insert_steps):
             th_current = self._readJpos()
             self.cur_j_vel = self._get_ik_vels(self.pre_insertz, i, step_types=self.pre_insert_steps)
-            self.action = self.cur_j_vel
+            self.command = self.cur_j_vel
 
             self.update()
 
@@ -261,35 +252,59 @@ class KinovaGen2Env(gym.Env):
         print('X after Phase 2:')
         print(pos_current[0])
 
-        """ Phase 2 pause  """
-        self.action = np.array([0.0, 0.0, 0.0])
+        # Phase 2 pause
+        self.command = np.array([0.0, 0.0, 0.0])
 
         for i in range(self.pause_steps):
             self.update()
 
     def step(self, action):
+        self.prev_j_vel = self.next_j_vel
+        self.next_j_vel = self._get_ik_vels(self.insertz, self.nStep, step_types=self.insertion_steps)
+
+        j2_vel = self.next_j_vel[0] - self.action_coeff * action[0]
+        j4_vel = self.next_j_vel[1] + self.action_coeff * action[1] - self.action_coeff * action[0]
+        j6_vel = self.next_j_vel[2] + self.action_coeff * action[1]
+
         # Apply actions
-        self.action = action
+        self.command = np.array([j2_vel, j4_vel, j6_vel])
 
         # Step the simulation
         self.update()
 
         # Observations
-        obs = self._get_obs()
-
-        # Done flag
-        ...
+        self.obs = self._get_obs()
 
         # Reward
-        reward = ...
+        reward = self._get_reward()
 
-        return obs
+        # Done flag
+        self.nStep += 1
+        if self.nStep >= self.insertion_steps:
+            self.sim_completed = True
+
+        return self.obs, reward, self.sim_completed, False, {}
 
     def render(self):
         self.vx_interface.render_display()
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        # We need the following line to seed self.np_random
+        super().reset(seed=seed)
+
+        self.insertion_misalign = (np.pi / 180.0) * (
+            np.random.uniform(self.min_misalign, self.max_misalign)
+        )  # joint 6 misalignment, negative and positive
+        print('Insertion misalignment: ' + str(self.insertion_misalign))
+
         self.vx_interface.reset_saved_frame()
+
+        self.nStep = 0
+        self.sim_completed = False
+
+        info = {}
+
+        return self._get_obs(), info
 
     """ Vortex interface functions """
 
@@ -299,49 +314,40 @@ class KinovaGen2Env(gym.Env):
         Sends the action and reads the robot's state
         """
 
-        self._send_joint_target_vel(self.action)
+        self._send_joint_target_vel(self.command)
 
         self.vx_interface.app.update()
 
         self.time_step = self.vx_interface.app.getSimulationTime()
         self.obs = self._get_obs()
-        # log_dict = {'sim_time': self.time_step, 'action': self.action, 'obs': self.obs}
+        # log_dict = {'sim_time': self.time_step, 'action': self.command, 'obs': self.obs}
 
         # robot_logger.debug('', extra=log_dict)
 
         # width = 10
         # precision = 4
         # print(
-        #     f'| {self.time_step:^{width}.{3}f} | {self.obs[0]:^{width}.{precision}f} | {self.action[0]:^{width}.{precision}f} | {self.obs[3]:^{width}.{precision}f} | {self.obs[6]:^{width}.{precision}f} |'
+        #     f'| {self.time_step:^{width}.{3}f} | {self.obs[0]:^{width}.{precision}f} | {self.command[0]:^{width}.{precision}f} | {self.obs[3]:^{width}.{precision}f} | {self.obs[6]:^{width}.{precision}f} |'
         # )
 
-    def _get_obs(self):
+    def _get_obs(self) -> np.array:
+        """Observation space - 12 observations:
+            - position
+            - vel
+            - ideal vel
+            - torque
+
+        , for each of 3 joints
+
+        Returns:
+            np.array: Observation
+        """
         joint_poses = self._readJpos()
         joint_vel = self._readJvel()
-        # joint_vel_target = self._readJvel_target()
         joint_torques = self._readJtorque()
+        joint_ideal_vel = self.next_j_vel
 
-        # joint_vel_id = []
-        # joint_vel_id.append(self.next_j_vel[0])
-        # joint_vel_id.append(self.next_j_vel[1])
-        # joint_vel_id.append(self.next_j_vel[2])
-
-        # print('Observation')
-        # print(f'joint_poses: {joint_poses}')
-        # print(f'\njoint_torques: {self.joint_torques}')
-        # print(f'\nJoint vels: {self.joint_vel_real}')
-        # print(f'\njoint_vel_id: {joint_vel_id}')
-
-        # FIND OUT IF TORQUES ARE SURPASSING LIMITS #
-        # if abs(self.joint_torques[0])>14.0:
-        #   print("Joint 2 torque: {}".format(self.joint_torques[0]))
-        # if abs(self.joint_torques[1])>5.0:
-        #   print("Joint 4 torque: {}".format(self.joint_torques[1]))
-        # if abs(self.joint_torques[2])>2.0:
-        #   print("Joint 6 torque: {}".format(self.joint_torques[2]))
-
-        return np.concatenate((joint_poses, joint_vel, joint_torques))
-        # return [j2_pos_real, j4_pos_real, j6_pos_real]
+        return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques))
 
     def _readJpos(self):
         j2_pos = self.vx_interface.get_output(VX_OUT.j2_pos_real)
@@ -371,11 +377,11 @@ class KinovaGen2Env(gym.Env):
 
         return np.array([j2_target, j4_target, j6_target])
 
-    def _get_plug_force(self):
+    def get_plug_force(self):
         plug_force = self.vx_interface.get_output(VX_OUT.plug_force)
         return plug_force
 
-    def _get_plug_torque(self):
+    def get_plug_torque(self):
         plug_torque = self.vx_interface.get_output(VX_OUT.plug_torque)
         return plug_torque
 
@@ -385,6 +391,22 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.set_input(VX_IN.j6_vel_id, target_vels[2])
 
     """ Utilities """
+
+    def _get_reward(self):
+        j2_id = self.next_j_vel[0]
+        j4_id = self.next_j_vel[1]
+        j6_id = self.next_j_vel[2]
+
+        #  reward = self.reward_weight*(-abs((shv_id-shv)*self.shoulder_torque.value)-abs((elv_id-elv)*self.elbow_torque.value)-abs((wrv_id-wrv)*self.wrist_torque.value))
+        joint_vels = self.obs[3:6]
+        joint_torques = self.obs[0:3]
+
+        reward = self.reward_weight * (
+            -abs((j2_id - joint_vels[0]) * joint_torques[0])
+            - abs((j4_id - joint_vels[1]) * joint_torques[1])
+            - abs((j6_id - joint_vels[2]) * joint_torques[2])
+        )
+        return reward
 
     def _get_ik_vels(self, down_speed, cur_count, step_types):
         th_current = self._readJpos()

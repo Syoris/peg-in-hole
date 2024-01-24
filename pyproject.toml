@@ -10,12 +10,14 @@ packages = [
 
 [tool.poetry.dependencies]
 python = "~3.8"
-numpy = "1.24.4"
+numpy = "1.24.3"
 gymnasium = "^0.29.1"
 pydantic = "^2.5.3"
 pydantic-settings = "^2.1.0"
 matplotlib = "3.7.4"
 python-json-logger = "^2.0.7"
+# tensorflow = "2.13.1"
+hydra-core = "^1.3.2"
 
 
 [build-system]
