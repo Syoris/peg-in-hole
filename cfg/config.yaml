@@ -1,0 +1,6 @@
+defaults:
+  - task: Insert_Kinova3DoF
+  - _self_
+  
+render: True
+test: False

@@ -2,12 +2,14 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import ctypes
-from settings import app_settings
 from pathlib import Path
 from pydantic import BaseModel
 import logging
+from omegaconf import OmegaConf
 
+from peg_in_hole.settings import app_settings
 from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
+from peg_in_hole.vortex_envs.robot_schema_config import KinovaConfig
 
 logger = logging.getLogger(__name__)
 robot_logger = logging.getLogger('robot_state')
@@ -37,9 +39,6 @@ class VX_Inputs(BaseModel):
     j6_vel_id: str = 'j6_vel_id'
 
 
-VX_IN = VX_Inputs()
-
-
 class VX_Outputs(BaseModel):
     hand_pos_rot: str = 'hand_pos_rot'
     j2_pos_real: str = 'j2_pos_real'
@@ -57,7 +56,9 @@ class VX_Outputs(BaseModel):
     plug_torque: str = 'plug_torque'
 
 
+VX_IN = VX_Inputs()
 VX_OUT = VX_Outputs()
+
 
 """ Kinova Robot Interface """
 
@@ -66,10 +67,12 @@ class KinovaGen2Env(gym.Env):
     metadata = {'render_modes': ['human']}
 
     def __init__(self, render_mode=None):
+        """Load config"""
+        self._get_robot_config()
+
         """
         Observation space (9 observations: torque, ideal velocity, actual velocity, for each of 3 joints)
         """
-
         self.action = np.array([0.0, 0.0, 0.0])
         self.obs = np.zeros(9)
         self.time_step = 0.0
@@ -84,46 +87,32 @@ class KinovaGen2Env(gym.Env):
         self.max_j2_v_id, self.min_j2_v_id = 1.0, -1.0
         self.max_j4_v_id, self.min_j4_v_id = 1.0, -1.0
         self.max_j6_v_id, self.min_j6_v_id = 1.0, -1.0
+
+        # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
+        # Each one is 1x(n_joints). Total size: 4*(n_joints)
+        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
+        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
+        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
+        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
+        torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
+        torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
+
+        obs_low_bound = np.concatenate((pos_min, vel_min, vel_min, torque_min))
+        obs_high_bound = np.concatenate((pos_max, vel_max, vel_max, torque_max))
+
         self.observation_space = spaces.Box(
-            low=np.array(
-                [
-                    self.min_j2_t,
-                    self.min_j4_t,
-                    self.min_j6_t,
-                    self.min_j2_v,
-                    self.min_j4_v,
-                    self.min_j6_v,
-                    self.min_j2_v_id,
-                    self.min_j4_v_id,
-                    self.min_j6_v_id,
-                ]
-            ),
-            high=np.array(
-                [
-                    self.max_j2_t,
-                    self.max_j4_t,
-                    self.max_j6_t,
-                    self.max_j2_v,
-                    self.max_j4_v,
-                    self.max_j6_v,
-                    self.max_j2_v_id,
-                    self.max_j4_v_id,
-                    self.max_j6_v_id,
-                ]
-            ),
-            shape=(9,),
-            dtype=np.float32,
+            low=obs_low_bound,
+            high=obs_high_bound,
+            dtype=np.float64,
         )
 
         # Action Space
-        self.max_j2_vel, self.min_j2_vel = 1.0, -1.0
-        self.max_j4_vel, self.min_j4_vel = 1.0, -1.0
-
+        act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
+        act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
         self.action_space = spaces.Box(
-            low=np.array([self.min_j2_vel, self.min_j4_vel]),
-            high=np.array([self.max_j2_vel, self.max_j4_vel]),
-            shape=(2,),
-            dtype=np.float32,
+            low=act_low_bound,
+            high=act_high_bound,
+            dtype=np.float64,
         )
 
         self.action_coeff = 0.01  # coefficient the action will be multiplied by
@@ -234,6 +223,11 @@ class KinovaGen2Env(gym.Env):
 
         self.sim_completed = False
         self.nStep = 0
+
+    def _get_robot_config(self):
+        config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
+        # config_path = 'cfg/tasks/Insert_Kinova3DoF.yaml'
+        self.robot_cfg = OmegaConf.load(config_path)
 
     def go_to_home(self):
         """

@@ -3,7 +3,9 @@ import logging
 import tensorflow as tf
 import gymnasium as gym
 import numpy as np
+import hydra
 
+from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.vortex_envs.vortex_interface  # noqa: F401 Needed to register env to gym

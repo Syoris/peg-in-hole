@@ -1,12 +1,8 @@
 from settings import app_settings
-import time
 import logging
 import traceback
-import tensorflow as tf
-from keras import layers
-import matplotlib.pyplot as plt
-import gymnasium as gym
-import numpy as np
+import hydra
+from omegaconf import DictConfig
 
 from peg_in_hole.ddpg.train3dof import train3dof
 
@@ -21,8 +17,10 @@ new version:
 logger = logging.getLogger(__name__)
 
 
-if __name__ == '__main__':
+@hydra.main(version_base=None, config_name='config', config_path='../cfg')
+def main(cfg: DictConfig):
     logger.info('---------------- Peg-in-hole Package ----------------')
+
     try:
         train3dof()
     except RuntimeError as e:
@@ -34,3 +32,7 @@ if __name__ == '__main__':
         raise e
 
     logger.info('Done')
+
+
+if __name__ == '__main__':
+    main()
