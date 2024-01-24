@@ -4,15 +4,21 @@ import tensorflow as tf
 import gymnasium as gym
 import numpy as np
 import hydra
+from omegaconf import DictConfig
+from time import time
+
 
 from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.vortex_envs.vortex_interface  # noqa: F401 Needed to register env to gym
+from peg_in_hole.utils.Neptune import NeptuneRun
+
+# TODO: DEMAIN: Log at freq
+# TODO: DEMAIN: Log ep data
+# TODO: DEMAIN: Plots
 
 logger = logging.getLogger(__name__)
-
-RENDER = True
 
 
 def policy(state, noise_object, actor_model, lower_bound, upper_bound):
@@ -28,28 +34,38 @@ def policy(state, noise_object, actor_model, lower_bound, upper_bound):
     return np.squeeze(legal_action)
 
 
-def train3dof():
-    env_name = 'vxUnjamming-v0'
-    if RENDER:
-        render_mode = 'human'
-    else:
-        render_mode = None
+def train3dof(cfg: DictConfig):
+    logger.info('Starting training of 3dof')
 
-    env = gym.make(env_name, render_mode=render_mode)
+    # General settings
+    task_cfg = cfg.task
+
+    # Neptune logger
+    neptune_logger = NeptuneRun(neptune_cfg=cfg.neptune)
+    neptune_logger.run['task_cfg'] = task_cfg
+
+    # Create the env
+    env_name = 'vxUnjamming-v0'
+    render_mode = 'human' if cfg.render else None
+
+    start_time = time()
+    env = gym.make(env_name, render_mode=render_mode, neptune_logger=neptune_logger)
+    print(f'init took: {time() - start_time} sec')
 
     num_states = env.observation_space.shape[0]
-    print('Size of State Space ->  {}'.format(num_states))
     num_actions = env.action_space.shape[0]
-    print('Size of Action Space ->  {}'.format(num_actions))
+
+    logger.info(f'Size of State Space: {num_states}')
+    logger.info(f'Size of Action Space: {num_states}')
 
     upper_bound = env.action_space.high
     lower_bound = env.action_space.low
+    logger.info(f'Max Value of Action: {upper_bound}')
+    logger.info(f'Min Value of Action: {lower_bound}')
 
-    print('Max Value of Action ->  {}'.format(upper_bound))
-    print('Min Value of Action ->  {}'.format(lower_bound))
-
-    std_dev = 0.2
-    ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(std_dev) * np.ones(1))
+    # Networks
+    noise_std_dev = task_cfg.rl_hparams.noise_std_dev
+    ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(noise_std_dev) * np.ones(1))
 
     actor_model = get_actor(num_states=num_states, num_actions=num_actions)
     critic_model = get_critic(num_states=num_states, num_actions=num_actions)
@@ -62,20 +78,16 @@ def train3dof():
     critic_target.set_weights(critic_model.get_weights())
 
     # Learning rate for actor-critic models
-    critic_lr = 0.0001
-    actor_lr = 0.0001
+    critic_lr = task_cfg.rl_hparams.critic_lr
+    actor_lr = task_cfg.rl_hparams.actor_lr
 
     critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
     actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-    total_episodes = 50
-    # Discount factor for future rewards
-    gamma = 0.99
-    # Used to update target networks
-    tau = 0.001
+    total_episodes = task_cfg.rl_hparams.episodes
 
-    buffer_capacity = 200000
-    batch_size = 32
+    tau = task_cfg.rl_hparams.tau  # Used to update target networks
+
     buffer = Buffer(
         num_states=num_states,
         num_actions=num_actions,
@@ -85,9 +97,9 @@ def train3dof():
         critic_model=critic_model,
         target_critic=critic_target,
         critic_optimizer=critic_optimizer,
-        gamma=gamma,
-        buffer_capacity=buffer_capacity,
-        batch_size=batch_size,
+        gamma=task_cfg.rl_hparams.buffer.gamma,  # Discount factor for future rewards
+        buffer_capacity=task_cfg.rl_hparams.buffer.capacity,
+        batch_size=task_cfg.rl_hparams.buffer.batch_size,
     )
 
     # To store reward history of each episode

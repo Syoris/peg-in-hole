@@ -5,11 +5,12 @@ import ctypes
 from pathlib import Path
 from pydantic import BaseModel
 import logging
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
 
 from peg_in_hole.settings import app_settings
 from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.vortex_envs.robot_schema_config import KinovaConfig
+from peg_in_hole.utils.Neptune import NeptuneRun
 
 logger = logging.getLogger(__name__)
 robot_logger = logging.getLogger('robot_state')
@@ -66,11 +67,22 @@ VX_OUT = VX_Outputs()
 class KinovaGen2Env(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, neptune_logger=None, env_cfg=None):
         """Load config"""
         self._get_robot_config()
 
-        self.time_step = 0.0
+        # General params
+        self.neptune_logger = neptune_logger
+        self.sim_time = 0.0
+        self.episode = 0
+        self.episode_logger = self.neptune_logger.run[f'episode/{self.episode}']
+        self.ep_history = {
+            'step': [],
+            'sim_time': [],
+            'obs': [],
+            'command': [],
+            'action': [],
+        }  # Save here the states at each log_freq
 
         """ Observation space (12 observations: position, vel, ideal vel, torque, for each of 3 joints) """
         self.obs = np.zeros(12)
@@ -180,12 +192,6 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.load_display()
         self.vx_interface.render_display(active=(self.render_mode == 'human'))
 
-        # Print vars
-        width = 10
-        print(
-            f"| {'Time step':^{width}} | {'j2_pose':^{width}} | {'j2_tar':^{width}} | {'j2_vel':^{width}} | {'j2_torque':^{width}} |"
-        )
-
         # Initialize Robot position
         self.go_home()
 
@@ -196,11 +202,16 @@ class KinovaGen2Env(gym.Env):
 
         # Save the state
         self.vx_interface.save_current_frame()
-
         self.vx_interface.set_app_mode(AppMode.SIMULATING)
 
+        """ Finalize setup """
         self.sim_completed = False
         self.nStep = 0
+
+        self.reset()
+
+        self.episode += 1
+        self.episode_logger = self.neptune_logger.run[f'episode/{self.episode}']
 
     def _get_robot_config(self):
         config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
@@ -259,6 +270,7 @@ class KinovaGen2Env(gym.Env):
             self.update()
 
     def step(self, action):
+        self.action = action
         self.prev_j_vel = self.next_j_vel
         self.next_j_vel = self._get_ik_vels(self.insertz, self.nStep, step_types=self.insertion_steps)
 
@@ -289,18 +301,27 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.render_display()
 
     def reset(self, seed=None, options=None):
+        logger.debug('Reseting env')
+
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
+        # Log results to neptune
+        # self._log_ep_data()
+
+        # Random parameters
         self.insertion_misalign = (np.pi / 180.0) * (
             np.random.uniform(self.min_misalign, self.max_misalign)
         )  # joint 6 misalignment, negative and positive
         print('Insertion misalignment: ' + str(self.insertion_misalign))
 
+        # Reset Robot
         self.vx_interface.reset_saved_frame()
 
+        # Reset parameters
         self.nStep = 0
         self.sim_completed = False
+        self.episode += 1
 
         info = {}
 
@@ -312,23 +333,26 @@ class KinovaGen2Env(gym.Env):
         """To update the state of the robot.
 
         Sends the action and reads the robot's state
+
         """
 
         self._send_joint_target_vel(self.command)
 
         self.vx_interface.app.update()
 
-        self.time_step = self.vx_interface.app.getSimulationTime()
+        self.sim_time = self.vx_interface.app.getSimulationTime()
         self.obs = self._get_obs()
-        # log_dict = {'sim_time': self.time_step, 'action': self.command, 'obs': self.obs}
 
-        # robot_logger.debug('', extra=log_dict)
+        log_dict = {
+            'sim_time': self.sim_time,
+            'step': self.nStep,
+            'obs': self.obs,
+            'command': self.command,
+            'action': self.action,
+        }
 
-        # width = 10
-        # precision = 4
-        # print(
-        #     f'| {self.time_step:^{width}.{3}f} | {self.obs[0]:^{width}.{precision}f} | {self.command[0]:^{width}.{precision}f} | {self.obs[3]:^{width}.{precision}f} | {self.obs[6]:^{width}.{precision}f} |'
-        # )
+        for param, val in log_dict.items():
+            self.ep_history[param].append(val)
 
     def _get_obs(self) -> np.array:
         """Observation space - 12 observations:
@@ -492,3 +516,35 @@ class KinovaGen2Env(gym.Env):
         th_current = self._readJpos()
         x, z, rot = self._read_tips_pos_fk(th_current)
         return x, z, rot
+
+    def _log_ep_data(self):
+        ep_logger = self.neptune_logger.run[f'episode/{self.episode}']
+
+        obs = np.vstack(self.ep_history['obs'])
+        command = np.vstack(self.ep_history['command'])
+        action = np.vstack(self.ep_history['action'])
+
+        log_dict = {
+            'sim_time': self.ep_history['sim_time'],
+            'step': self.ep_history['step'],
+            'j2_pos': obs[:, 0],
+            'j4_pos': obs[:, 1],
+            'j6_pos': obs[:, 2],
+            'j2_vel': obs[:, 0 + 3],
+            'j4_vel': obs[:, 1 + 3],
+            'j6_vel': obs[:, 2 + 3],
+            'j2_ideal_vel': obs[:, 0 + 6],
+            'j4_ideal_vel': obs[:, 1 + 6],
+            'j6_ideal_vel': obs[:, 2 + 6],
+            'j2_torque': obs[:, 0 + 9],
+            'j4_torque': obs[:, 1 + 9],
+            'j6_torque': obs[:, 2 + 9],
+            'j2_cmd': command[:, 0],
+            'j4_cmd': command[:, 1],
+            'j6_cmd': command[:, 2],
+            'j2_act': action[:, 0],
+            'j6_act': action[:, 1],
+        }
+
+        for param, val in log_dict.items():
+            ep_logger[param].extend(list(val))

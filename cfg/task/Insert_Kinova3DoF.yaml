@@ -1,2 +1,15 @@
-# defaults:
-#     - kinova_config_base
+task: 'Insert_Kinova3DoF'
+
+rl_hparams:
+  log_freq: 1  # Save robot state at each # step
+  episodes: 50  # Total num of episodes
+  critic_lr: 0.0001
+  actor_lr: 0.0001
+  noise_std_dev: 0.2  # Standard dev of OUActionNoise
+  tau: 0.001  # Used to update target networks
+
+  buffer:
+    gamma: 0.99  # Discount factor for future rewards
+    capacity: 200000
+    batch_size: 32
+
