@@ -19,6 +19,7 @@ class NeptuneRun:
             api_token=neptune_cfg.api_token,
             name=run_name,
         )
+        self.run.wait()
         logger.info(f"Run id: {self.run['sys/id'].fetch()}")
         logger.info(f"Run name: {self.run['sys/name'].fetch()}")
 

@@ -5,7 +5,7 @@ import gymnasium as gym
 import numpy as np
 import hydra
 from omegaconf import DictConfig
-from time import time
+import time
 
 
 from peg_in_hole.settings import app_settings
@@ -48,9 +48,9 @@ def train3dof(cfg: DictConfig):
     env_name = 'vxUnjamming-v0'
     render_mode = 'human' if cfg.render else None
 
-    start_time = time()
-    env = gym.make(env_name, render_mode=render_mode, neptune_logger=neptune_logger)
-    print(f'init took: {time() - start_time} sec')
+    start_time = time.time()
+    env = gym.make(env_name, render_mode=render_mode, neptune_logger=neptune_logger, task_cfg=task_cfg)
+    print(f'init took: {time.time() - start_time} sec')
 
     num_states = env.observation_space.shape[0]
     num_actions = env.action_space.shape[0]

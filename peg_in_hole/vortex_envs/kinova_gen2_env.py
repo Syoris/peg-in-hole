@@ -67,15 +67,19 @@ VX_OUT = VX_Outputs()
 class KinovaGen2Env(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, render_mode=None, neptune_logger=None, env_cfg=None):
+    def __init__(self, render_mode=None, neptune_logger=None, task_cfg=None):
         """Load config"""
         self._get_robot_config()
 
         # General params
-        self.neptune_logger = neptune_logger
+        self.task_cfg = task_cfg
+
         self.sim_time = 0.0
         self.episode = 0
-        self.episode_logger = self.neptune_logger.run[f'episode/{self.episode}']
+        self.nStep = 0  # Step counter
+
+        # Logging
+        self.neptune_logger = neptune_logger
         self.ep_history = {
             'step': [],
             'sim_time': [],
@@ -83,62 +87,19 @@ class KinovaGen2Env(gym.Env):
             'command': [],
             'action': [],
         }  # Save here the states at each log_freq
+        self.logging_freq = self.task_cfg.general.log_freq
 
-        """ Observation space (12 observations: position, vel, ideal vel, torque, for each of 3 joints) """
-        self.obs = np.zeros(12)
-
-        # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
-        # Each one is 1x(n_joints). Total size: 4*(n_joints)
-        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
-        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
-        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
-        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
-        torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
-        torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
-
-        # Minimum and Maximum joint position limits (in deg)
-        self.joints_range = {}
-        self.joints_range['j2_pos_min'], self.joints_range['j2_pos_max'] = (pos_min[0], pos_max[0])
-        self.joints_range['j4_pos_min'], self.joints_range['j4_pos_max'] = (pos_min[1], pos_max[1])
-        self.joints_range['j6_pos_min'], self.joints_range['j6_pos_max'] = (pos_min[2], pos_max[2])
-
-        # Minimum and Maximum joint force/torque limits (in N*m)
-        self.forces_range = {}
-        self.forces_range['j2_for_min'], self.forces_range['j2_for_max'] = (torque_min[0], torque_max[0])
-        self.forces_range['j4_for_min'], self.forces_range['j4_for_max'] = (torque_min[1], torque_max[1])
-        self.forces_range['j6_for_min'], self.forces_range['j6_for_max'] = (torque_min[2], torque_max[2])
-
-        obs_low_bound = np.concatenate((pos_min, vel_min, vel_min, torque_min))
-        obs_high_bound = np.concatenate((pos_max, vel_max, vel_max, torque_max))
-
-        self.observation_space = spaces.Box(
-            low=obs_low_bound,
-            high=obs_high_bound,
-            dtype=np.float64,
-        )
-
-        """ Action space (2 actions: j2 aug, j6, aug) """
-        self.action = np.array([0.0, 0.0])  # Action outputed by RL
-        self.command = np.array([0.0, 0.0, 0.0])  # Vel command to send to the robot
-
-        self.next_j_vel = np.zeros(3)  # Next target vel
-        self.prev_j_vel = np.zeros(3)  # Prev target vel
-
-        act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
-        act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
-        self.action_space = spaces.Box(
-            low=act_low_bound,
-            high=act_high_bound,
-            dtype=np.float64,
-        )
+        self._init_obs_space()
+        self._init_action_space()
 
         """ RL Hyperparameters """
-        self.action_coeff = 0.01  # coefficient the action will be multiplied by
+        # Actions
+        self.action_coeff = self.task_cfg.rl_hparams.action_coeff
 
         # Reward
-        self.reward_min_threshold = -5.0  # NOT CURRENTLY USED
-        self.min_height_threshold = 0.005  # NOT CURRENTLY USED
-        self.reward_weight = 0.04
+        self.reward_min_threshold = self.task_cfg.rl_hparams.reward.reward_min_threshold
+        self.min_height_threshold = self.task_cfg.rl_hparams.reward.min_height_threshold
+        self.reward_weight = self.task_cfg.rl_hparams.reward.reward_weight
 
         """ Sim Hyperparameters """
         # TODO: To YAML and pydantic data class
@@ -153,7 +114,6 @@ class KinovaGen2Env(gym.Env):
         self.pre_insert_steps = int(self.t_pre_insert / self.h)  # go up to the insertion phase
         self.insertion_steps = int(self.t_insertion / self.h)  # Insertion time (steps)
         self.max_insertion_steps = 2.0 * self.insertion_steps  # Maximum allowed time to insert
-        self.nStep = 0  # Step counter
         self.xpos_hole = 0.529  # x position of the hole
         self.ypos_hole = -0.007  # y position of the hole
         self.max_misalign = 2.0  # maximum misalignment of joint 7
@@ -206,17 +166,66 @@ class KinovaGen2Env(gym.Env):
 
         """ Finalize setup """
         self.sim_completed = False
-        self.nStep = 0
 
         self.reset()
 
         self.episode += 1
-        self.episode_logger = self.neptune_logger.run[f'episode/{self.episode}']
 
     def _get_robot_config(self):
         config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
         # config_path = 'cfg/tasks/Insert_Kinova3DoF.yaml'
         self.robot_cfg = OmegaConf.load(config_path)
+
+    def _init_obs_space(self):
+        """Observation space (12 observations: position, vel, ideal vel, torque, for each of 3 joints)"""
+        self.obs = np.zeros(12)
+
+        # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
+        # Each one is 1x(n_joints). Total size: 4*(n_joints)
+        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
+        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
+        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
+        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
+        torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
+        torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
+
+        # Minimum and Maximum joint position limits (in deg)
+        self.joints_range = {}
+        self.joints_range['j2_pos_min'], self.joints_range['j2_pos_max'] = (pos_min[0], pos_max[0])
+        self.joints_range['j4_pos_min'], self.joints_range['j4_pos_max'] = (pos_min[1], pos_max[1])
+        self.joints_range['j6_pos_min'], self.joints_range['j6_pos_max'] = (pos_min[2], pos_max[2])
+
+        # Minimum and Maximum joint force/torque limits (in N*m)
+        self.forces_range = {}
+        self.forces_range['j2_for_min'], self.forces_range['j2_for_max'] = (torque_min[0], torque_max[0])
+        self.forces_range['j4_for_min'], self.forces_range['j4_for_max'] = (torque_min[1], torque_max[1])
+        self.forces_range['j6_for_min'], self.forces_range['j6_for_max'] = (torque_min[2], torque_max[2])
+
+        obs_low_bound = np.concatenate((pos_min, vel_min, vel_min, torque_min))
+        obs_high_bound = np.concatenate((pos_max, vel_max, vel_max, torque_max))
+
+        self.observation_space = spaces.Box(
+            low=obs_low_bound,
+            high=obs_high_bound,
+            dtype=np.float64,
+        )
+
+    def _init_action_space(self):
+        """Action space (2 actions: j2 aug, j6, aug)"""
+        self.action = np.array([0.0, 0.0])  # Action outputed by RL
+        self.command = np.array([0.0, 0.0, 0.0])  # Vel command to send to the robot
+        self.next_j_vel = np.zeros(3)  # Next target vel
+        self.prev_j_vel = np.zeros(3)  # Prev target vel
+
+        act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
+        act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
+        self.action_space = spaces.Box(
+            low=act_low_bound,
+            high=act_high_bound,
+            dtype=np.float64,
+        )
+
+    """ Actions """
 
     def go_home(self):
         """
@@ -307,7 +316,7 @@ class KinovaGen2Env(gym.Env):
         super().reset(seed=seed)
 
         # Log results to neptune
-        # self._log_ep_data()
+        self._log_ep_data()
 
         # Random parameters
         self.insertion_misalign = (np.pi / 180.0) * (
@@ -322,6 +331,14 @@ class KinovaGen2Env(gym.Env):
         self.nStep = 0
         self.sim_completed = False
         self.episode += 1
+
+        self.ep_history = {
+            'step': [],
+            'sim_time': [],
+            'obs': [],
+            'command': [],
+            'action': [],
+        }  # Save here the states at each log_freq
 
         info = {}
 
@@ -343,16 +360,18 @@ class KinovaGen2Env(gym.Env):
         self.sim_time = self.vx_interface.app.getSimulationTime()
         self.obs = self._get_obs()
 
-        log_dict = {
-            'sim_time': self.sim_time,
-            'step': self.nStep,
-            'obs': self.obs,
-            'command': self.command,
-            'action': self.action,
-        }
+        # Log data
+        if self.nStep % self.logging_freq == 0:
+            log_dict = {
+                'sim_time': self.sim_time,
+                'step': self.nStep,
+                'obs': self.obs,
+                'command': self.command,
+                'action': self.action,
+            }
 
-        for param, val in log_dict.items():
-            self.ep_history[param].append(val)
+            for param, val in log_dict.items():
+                self.ep_history[param].append(val)
 
     def _get_obs(self) -> np.array:
         """Observation space - 12 observations:
@@ -520,31 +539,32 @@ class KinovaGen2Env(gym.Env):
     def _log_ep_data(self):
         ep_logger = self.neptune_logger.run[f'episode/{self.episode}']
 
-        obs = np.vstack(self.ep_history['obs'])
-        command = np.vstack(self.ep_history['command'])
-        action = np.vstack(self.ep_history['action'])
+        if len(self.ep_history['step']) > 0:
+            obs = np.vstack(self.ep_history['obs'])
+            command = np.vstack(self.ep_history['command'])
+            action = np.vstack(self.ep_history['action'])
 
-        log_dict = {
-            'sim_time': self.ep_history['sim_time'],
-            'step': self.ep_history['step'],
-            'j2_pos': obs[:, 0],
-            'j4_pos': obs[:, 1],
-            'j6_pos': obs[:, 2],
-            'j2_vel': obs[:, 0 + 3],
-            'j4_vel': obs[:, 1 + 3],
-            'j6_vel': obs[:, 2 + 3],
-            'j2_ideal_vel': obs[:, 0 + 6],
-            'j4_ideal_vel': obs[:, 1 + 6],
-            'j6_ideal_vel': obs[:, 2 + 6],
-            'j2_torque': obs[:, 0 + 9],
-            'j4_torque': obs[:, 1 + 9],
-            'j6_torque': obs[:, 2 + 9],
-            'j2_cmd': command[:, 0],
-            'j4_cmd': command[:, 1],
-            'j6_cmd': command[:, 2],
-            'j2_act': action[:, 0],
-            'j6_act': action[:, 1],
-        }
+            log_dict = {
+                'sim_time': self.ep_history['sim_time'],
+                'step': self.ep_history['step'],
+                'j2_pos': obs[:, 0],
+                'j4_pos': obs[:, 1],
+                'j6_pos': obs[:, 2],
+                'j2_vel': obs[:, 0 + 3],
+                'j4_vel': obs[:, 1 + 3],
+                'j6_vel': obs[:, 2 + 3],
+                'j2_ideal_vel': obs[:, 0 + 6],
+                'j4_ideal_vel': obs[:, 1 + 6],
+                'j6_ideal_vel': obs[:, 2 + 6],
+                'j2_torque': obs[:, 0 + 9],
+                'j4_torque': obs[:, 1 + 9],
+                'j6_torque': obs[:, 2 + 9],
+                'j2_cmd': command[:, 0],
+                'j4_cmd': command[:, 1],
+                'j6_cmd': command[:, 2],
+                'j2_act': action[:, 0],
+                'j6_act': action[:, 1],
+            }
 
-        for param, val in log_dict.items():
-            ep_logger[param].extend(list(val))
+            for param, val in log_dict.items():
+                ep_logger[param].extend(list(val))
