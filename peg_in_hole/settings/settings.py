@@ -18,7 +18,7 @@ def get_package_dir() -> Path:
 
 class Settings(BaseSettings):
     package_path: DirectoryPath = get_package_dir()
-    vortex_installation_path: DirectoryPath = Field(to_lower=True)
+    vortex_installation_path: DirectoryPath = Field(alias='vortex_path', to_lower=True)
     cfg_path: DirectoryPath = ''
     vortex_resources_path: DirectoryPath = ''
 

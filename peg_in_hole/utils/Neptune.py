@@ -2,9 +2,9 @@ import warnings
 
 warnings.filterwarnings('ignore', category=DeprecationWarning)  # message=r'.*jsonschema.RefResolver is deprecated.*')
 
-import neptune
-from datetime import datetime
-import logging
+import neptune  # noqa
+from datetime import datetime  # noqa
+import logging  # noqa
 
 logger = logging.getLogger(__name__)
 

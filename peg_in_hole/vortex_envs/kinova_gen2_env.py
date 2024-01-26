@@ -1,14 +1,12 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-import ctypes
-from pathlib import Path
 from pydantic import BaseModel
 import logging
 from omegaconf import OmegaConf, DictConfig
 
+from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
-from peg_in_hole.vortex_envs.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.vortex_envs.robot_schema_config import KinovaConfig
 from peg_in_hole.utils.Neptune import NeptuneRun
 

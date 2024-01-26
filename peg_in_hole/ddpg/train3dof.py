@@ -11,7 +11,7 @@ import time
 from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
-import peg_in_hole.vortex_envs.vortex_interface  # noqa: F401 Needed to register env to gym
+import peg_in_hole.vortex_envs.kinova_gen2_env  # noqa: F401 Needed to register env to gym
 from peg_in_hole.utils.Neptune import NeptuneRun
 
 # TODO: DEMAIN: Log at freq
