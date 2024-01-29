@@ -11,8 +11,8 @@ import time
 from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
-import peg_in_hole.vortex_envs.kinova_gen2_env  # noqa: F401 Needed to register env to gym
-from peg_in_hole.utils.Neptune import NeptuneRun
+import peg_in_hole.tasks.kinova_gen2_env  # noqa: F401 Needed to register env to gym
+from peg_in_hole.utils.neptune import new_neptune_run
 
 # TODO: DEMAIN: Log at freq
 # TODO: DEMAIN: Log ep data
@@ -41,15 +41,15 @@ def train3dof(cfg: DictConfig):
     task_cfg = cfg.task
 
     # Neptune logger
-    neptune_logger = NeptuneRun(neptune_cfg=cfg.neptune)
-    neptune_logger.run['task_cfg'] = task_cfg
+    run = new_neptune_run(neptune_cfg=cfg.neptune)
+    run['task_cfg'] = task_cfg
 
     # Create the env
     env_name = 'vxUnjamming-v0'
     render_mode = 'human' if cfg.render else None
 
     start_time = time.time()
-    env = gym.make(env_name, render_mode=render_mode, neptune_logger=neptune_logger, task_cfg=task_cfg)
+    env = gym.make(env_name, render_mode=render_mode, neptune_run=run, task_cfg=task_cfg)
     print(f'init took: {time.time() - start_time} sec')
 
     num_states = env.observation_space.shape[0]
@@ -125,8 +125,7 @@ def train3dof(cfg: DictConfig):
 
         count = 0
         while True:
-            if ep == total_episodes - 1:
-                env.render()
+            # TODO: Move logging here
 
             tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 

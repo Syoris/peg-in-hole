@@ -4,11 +4,10 @@ import numpy as np
 from pydantic import BaseModel
 import logging
 from omegaconf import OmegaConf, DictConfig
+import neptune
 
 from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
-from peg_in_hole.vortex_envs.robot_schema_config import KinovaConfig
-from peg_in_hole.utils.Neptune import NeptuneRun
 
 logger = logging.getLogger(__name__)
 robot_logger = logging.getLogger('robot_state')
@@ -65,7 +64,7 @@ VX_OUT = VX_Outputs()
 class KinovaGen2Env(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, render_mode=None, neptune_logger=None, task_cfg=None):
+    def __init__(self, render_mode=None, neptune_run: neptune.Run = None, task_cfg=None):
         """Load config"""
         self._get_robot_config()
 
@@ -77,7 +76,7 @@ class KinovaGen2Env(gym.Env):
         self.nStep = 0  # Step counter
 
         # Logging
-        self.neptune_logger = neptune_logger
+        self.neptune_run = neptune_run
         self.ep_history = {
             'step': [],
             'sim_time': [],
@@ -535,7 +534,7 @@ class KinovaGen2Env(gym.Env):
         return x, z, rot
 
     def _log_ep_data(self):
-        ep_logger = self.neptune_logger.run[f'episode/{self.episode}']
+        ep_logger = self.neptune_run[f'episode/{self.episode}']
 
         if len(self.ep_history['step']) > 0:
             obs = np.vstack(self.ep_history['obs'])
