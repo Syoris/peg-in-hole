@@ -12,9 +12,6 @@ from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.tasks.RPL_Insert_3DoF  # noqa: F401 Needed to register env to gym
 from peg_in_hole.utils.neptune import new_neptune_run
 
-# TODO: DEMAIN: Log at freq
-# TODO: DEMAIN: Log ep data
-# TODO: DEMAIN: Plots
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +103,7 @@ def train3dof(cfg: DictConfig):
     render_mode = 'human' if cfg.render else None
 
     training_start_time = time.time()
-    env = gym.make(env_name, render_mode=render_mode, neptune_run=run, task_cfg=task_cfg)
+    env = gym.make(env_name, render_mode=render_mode, task_cfg=task_cfg)
     print(f'init took: {time.time() - training_start_time} sec')
 
     num_states = env.observation_space.shape[0]

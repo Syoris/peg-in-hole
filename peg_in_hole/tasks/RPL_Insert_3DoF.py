@@ -3,7 +3,7 @@ from gymnasium import spaces
 import numpy as np
 from pydantic import BaseModel
 import logging
-from omegaconf import OmegaConf, DictConfig
+from omegaconf import OmegaConf
 import neptune
 
 from pyvortex.vortex_interface import VortexInterface, AppMode
@@ -61,10 +61,10 @@ VX_OUT = VX_Outputs()
 """ Kinova Robot Interface """
 
 
-class KinovaGen2Env(gym.Env):
-    metadata = {'render_modes': ['human']}
+class RPL_Insert_3DoF(gym.Env):
+    metadata = {'render_modes': ['human'], 'render_fps': 60}
 
-    def __init__(self, render_mode=None, neptune_run: neptune.Run = None, task_cfg=None):
+    def __init__(self, render_mode=None, task_cfg=None):
         """Load config"""
         self._get_robot_config()
 
@@ -135,7 +135,8 @@ class KinovaGen2Env(gym.Env):
 
         # Create a display window
         self.vx_interface.load_display()
-        self.vx_interface.render_display(active=(self.render_mode == 'human'))
+        # self.vx_interface.render_display(active=(self.render_mode == 'human'))
+        self.vx_interface.render_display(active=False)
 
         # Initialize Robot position
         self.go_home()
@@ -190,7 +191,7 @@ class KinovaGen2Env(gym.Env):
         self.observation_space = spaces.Box(
             low=obs_low_bound,
             high=obs_high_bound,
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
     def _init_action_space(self):
@@ -205,7 +206,7 @@ class KinovaGen2Env(gym.Env):
         self.action_space = spaces.Box(
             low=act_low_bound,
             high=act_high_bound,
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
     """ Actions """
@@ -318,7 +319,10 @@ class KinovaGen2Env(gym.Env):
         return self.obs, reward, self.sim_completed, False, info
 
     def render(self):
-        self.vx_interface.render_display()
+        if self.render_mode is None:
+            self.vx_interface.render_display(False)
+        elif self.render_mode == 'human':
+            self.vx_interface.render_display(True)
 
     def reset(self, seed=None, options=None):
         """Reset the environment.
@@ -348,7 +352,7 @@ class KinovaGen2Env(gym.Env):
         self.insertion_misalign = (np.pi / 180.0) * (
             np.random.uniform(self.min_misalign, self.max_misalign)
         )  # joint 6 misalignment, negative and positive
-        print('Insertion misalignment: ' + str(self.insertion_misalign))
+        # print('Insertion misalignment: ' + str(self.insertion_misalign))
 
         # Reset Robot
         self.vx_interface.reset_saved_frame()
@@ -394,7 +398,7 @@ class KinovaGen2Env(gym.Env):
         joint_torques = self._readJtorque()
         joint_ideal_vel = self.next_j_vel
 
-        return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques))
+        return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques), dtype=np.float32)
 
     def _get_step_info(self) -> dict:
         """Get info about the robot
@@ -420,21 +424,21 @@ class KinovaGen2Env(gym.Env):
         j4_pos = self.vx_interface.get_output(VX_OUT.j4_pos_real)
         j6_pos = self.vx_interface.get_output(VX_OUT.j6_pos_real)
 
-        return np.array([j2_pos, j4_pos, j6_pos])
+        return np.array([j2_pos, j4_pos, j6_pos], dtype=np.float32)
 
     def _readJvel(self):
         j2_vel = self.vx_interface.get_output(VX_OUT.j2_vel_real)
         j4_vel = self.vx_interface.get_output(VX_OUT.j4_vel_real)
         j6_vel = self.vx_interface.get_output(VX_OUT.j6_vel_real)
 
-        return np.array([j2_vel, j4_vel, j6_vel])
+        return np.array([j2_vel, j4_vel, j6_vel], dtype=np.float32)
 
     def _readJtorque(self):
         j2_t = self.vx_interface.get_output(VX_OUT.j2_torque)
         j4_t = self.vx_interface.get_output(VX_OUT.j4_torque)
         j6_t = self.vx_interface.get_output(VX_OUT.j6_torque)
 
-        return np.array([j2_t, j4_t, j6_t])
+        return np.array([j2_t, j4_t, j6_t], dtype=np.float32)
 
     def _readJvel_target(self):
         j2_target = self.vx_interface.get_input(VX_IN.j2_vel_id)

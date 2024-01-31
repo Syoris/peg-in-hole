@@ -5,6 +5,7 @@ import hydra
 from omegaconf import DictConfig
 
 from peg_in_hole.ddpg.train3dof import train3dof
+from peg_in_hole.ddpg.ddpg_sb3 import train_ddpg_3dof
 
 """
 Time comp:
@@ -22,7 +23,9 @@ def main(cfg: DictConfig):
     logger.info('---------------- Peg-in-hole Package ----------------')
 
     try:
-        train3dof(cfg)
+        # train3dof(cfg)
+        train_ddpg_3dof(cfg)
+
     except RuntimeError as e:
         logger.error(e, exc_info=True)
         raise e
