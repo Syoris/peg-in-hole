@@ -72,19 +72,7 @@ class KinovaGen2Env(gym.Env):
         self.task_cfg = task_cfg
 
         self.sim_time = 0.0
-        self.episode = 0
-        self.nStep = 0  # Step counter
-
-        # Logging
-        self.neptune_run = neptune_run
-        self.ep_history = {
-            'step': [],
-            'sim_time': [],
-            'obs': [],
-            'command': [],
-            'action': [],
-        }  # Save here the states at each log_freq
-        self.logging_freq = self.task_cfg.general.log_freq
+        self.step_count = 0  # Step counter
 
         self._init_obs_space()
         self._init_action_space()
@@ -166,16 +154,14 @@ class KinovaGen2Env(gym.Env):
 
         self.reset()
 
-        self.episode += 1
-
     def _get_robot_config(self):
+        """Load robot config from .yaml file"""
         config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
-        # config_path = 'cfg/tasks/Insert_Kinova3DoF.yaml'
         self.robot_cfg = OmegaConf.load(config_path)
 
     def _init_obs_space(self):
         """Observation space (12 observations: position, vel, ideal vel, torque, for each of 3 joints)"""
-        self.obs = np.zeros(12)
+        self.obs = np.zeros(9)
 
         # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
         # Each one is 1x(n_joints). Total size: 4*(n_joints)
@@ -233,7 +219,7 @@ class KinovaGen2Env(gym.Env):
 
         """ Phase 1 """
         # Set joint velocities to initialize
-        self.update()
+        self.update_sim()
 
         j4_vel_id = (np.pi / 180.0) * 90.0 / self.t_init_step
         # j6_vel_id = self.insertion_misalign / self.t_init_step
@@ -242,7 +228,7 @@ class KinovaGen2Env(gym.Env):
 
         # Step the Vortex simulation
         for i in range(self.init_steps):
-            self.update()
+            self.update_sim()
 
         # Read reference position and rotation
         th_current = self._readJpos()
@@ -254,7 +240,7 @@ class KinovaGen2Env(gym.Env):
         self.command = np.array([0.0, 0.0, 0.0])
 
         for i in range(self.pause_steps):
-            self.update()
+            self.update_sim()
 
         """ Phase 2 (move downwards quickly and also make the tips aligned with the hole) """
         for i in range(self.pre_insert_steps):
@@ -262,7 +248,7 @@ class KinovaGen2Env(gym.Env):
             self.cur_j_vel = self._get_ik_vels(self.pre_insertz, i, step_types=self.pre_insert_steps)
             self.command = self.cur_j_vel
 
-            self.update()
+            self.update_sim()
 
         th_current = self._readJpos()
         pos_current = self._read_tips_pos_fk(th_current)
@@ -273,12 +259,37 @@ class KinovaGen2Env(gym.Env):
         self.command = np.array([0.0, 0.0, 0.0])
 
         for i in range(self.pause_steps):
-            self.update()
+            self.update_sim()
 
     def step(self, action):
+        """
+        Take one step. This is the main function of the environment.
+
+        The state of the robot is defined as all the measurements that the physical robot could obtain from sensors:
+        - position
+        - vel
+        - ideal vel
+        - torque
+
+        The info returned is the other information that might be useful for analysis, but not for learning:
+        - command
+        - plug force
+        - plug torque
+
+
+        Args:
+            action (np.Array): The action to take. Defined as a correction to the joint velocities
+
+        Returns:
+            obs (np.Array): The observation of the environment after taking the step
+            reward (float): The reward obtained after taking the step
+            sim_completed (bool): Flag indicating if the simulation is completed
+            done (bool): Flag indicating if the episode is done
+            info (dict): Additional information about the step
+        """
         self.action = action
         self.prev_j_vel = self.next_j_vel
-        self.next_j_vel = self._get_ik_vels(self.insertz, self.nStep, step_types=self.insertion_steps)
+        self.next_j_vel = self._get_ik_vels(self.insertz, self.step_count, step_types=self.insertion_steps)
 
         j2_vel = self.next_j_vel[0] - self.action_coeff * action[0]
         j4_vel = self.next_j_vel[1] + self.action_coeff * action[1] - self.action_coeff * action[0]
@@ -288,32 +299,50 @@ class KinovaGen2Env(gym.Env):
         self.command = np.array([j2_vel, j4_vel, j6_vel])
 
         # Step the simulation
-        self.update()
+        self.update_sim()
 
         # Observations
-        self.obs = self._get_obs()
+        self.obs = self._get_robot_state()
 
         # Reward
         reward = self._get_reward()
 
         # Done flag
-        self.nStep += 1
-        if self.nStep >= self.insertion_steps:
+        self.step_count += 1
+        if self.step_count >= self.insertion_steps:
             self.sim_completed = True
 
-        return self.obs, reward, self.sim_completed, False, {}
+        # Info
+        info = self._get_step_info()  # plug force and torque
+
+        return self.obs, reward, self.sim_completed, False, info
 
     def render(self):
         self.vx_interface.render_display()
 
     def reset(self, seed=None, options=None):
+        """Reset the environment.
+
+        Returns the robot states after the reset and information about the reset.
+
+        env_info:
+        - TODO: Add info about the reset
+            - Insertion misalignment
+            - Friction coefficient
+            ...
+
+        Args:
+            seed (_type_, optional): Defaults to None.
+            options (_type_, optional): _description_. Defaults to None.
+
+        Returns:
+            obs: Robot state
+            env_info (dict): Information about the env after reset
+        """
         logger.debug('Reseting env')
 
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
-
-        # Log results to neptune
-        self._log_ep_data()
 
         # Random parameters
         self.insertion_misalign = (np.pi / 180.0) * (
@@ -325,25 +354,14 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.reset_saved_frame()
 
         # Reset parameters
-        self.nStep = 0
+        self.step_count = 0  # Step num in the episode
         self.sim_completed = False
-        self.episode += 1
 
-        self.ep_history = {
-            'step': [],
-            'sim_time': [],
-            'obs': [],
-            'command': [],
-            'action': [],
-        }  # Save here the states at each log_freq
+        env_info = {}
 
-        info = {}
+        return self._get_robot_state(), env_info
 
-        return self._get_obs(), info
-
-    """ Vortex interface functions """
-
-    def update(self):
+    def update_sim(self):
         """To update the state of the robot.
 
         Sends the action and reads the robot's state
@@ -355,22 +373,11 @@ class KinovaGen2Env(gym.Env):
         self.vx_interface.app.update()
 
         self.sim_time = self.vx_interface.app.getSimulationTime()
-        self.obs = self._get_obs()
+        self.obs = self._get_robot_state()
 
-        # Log data
-        if self.nStep % self.logging_freq == 0:
-            log_dict = {
-                'sim_time': self.sim_time,
-                'step': self.nStep,
-                'obs': self.obs,
-                'command': self.command,
-                'action': self.action,
-            }
+    """ Vortex interface functions """
 
-            for param, val in log_dict.items():
-                self.ep_history[param].append(val)
-
-    def _get_obs(self) -> np.array:
+    def _get_robot_state(self) -> np.array:
         """Observation space - 12 observations:
             - position
             - vel
@@ -380,7 +387,7 @@ class KinovaGen2Env(gym.Env):
         , for each of 3 joints
 
         Returns:
-            np.array: Observation
+            np.array: Robot state
         """
         joint_poses = self._readJpos()
         joint_vel = self._readJvel()
@@ -388,6 +395,25 @@ class KinovaGen2Env(gym.Env):
         joint_ideal_vel = self.next_j_vel
 
         return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques))
+
+    def _get_step_info(self) -> dict:
+        """Get info about the robot
+        - Command
+        - Plug force
+        - Plug torque
+        - Insertion depth
+
+        Returns:
+            dict: Info about the robot
+        """
+        info = {
+            'command': self.command,
+            'plug_force': self._get_plug_force(),
+            'plug_torque': self._get_plug_torque(),
+            'insertion_depth': self._get_insertion_depth(),
+        }
+
+        return info
 
     def _readJpos(self):
         j2_pos = self.vx_interface.get_output(VX_OUT.j2_pos_real)
@@ -417,13 +443,23 @@ class KinovaGen2Env(gym.Env):
 
         return np.array([j2_target, j4_target, j6_target])
 
-    def get_plug_force(self):
-        plug_force = self.vx_interface.get_output(VX_OUT.plug_force)
-        return plug_force
+    def _get_plug_force(self) -> np.array:
+        """Read plug force
 
-    def get_plug_torque(self):
+        Returns:
+            np.array(1x3): [x, y, z]
+        """
+        plug_force = self.vx_interface.get_output(VX_OUT.plug_force)
+        return np.array([plug_force.x, plug_force.y, plug_force.z])
+
+    def _get_plug_torque(self) -> np.array:
+        """Read plug torque
+
+        Returns:
+            np.array: [x, y, z]
+        """
         plug_torque = self.vx_interface.get_output(VX_OUT.plug_torque)
-        return plug_torque
+        return np.array([plug_torque.x, plug_torque.y, plug_torque.z])
 
     def _send_joint_target_vel(self, target_vels):
         self.vx_interface.set_input(VX_IN.j2_vel_id, target_vels[0])
@@ -528,40 +564,7 @@ class KinovaGen2Env(gym.Env):
 
         return J
 
-    def get_insertion_depth(self):
+    def _get_insertion_depth(self):
         th_current = self._readJpos()
         x, z, rot = self._read_tips_pos_fk(th_current)
-        return x, z, rot
-
-    def _log_ep_data(self):
-        ep_logger = self.neptune_run[f'episode/{self.episode}']
-
-        if len(self.ep_history['step']) > 0:
-            obs = np.vstack(self.ep_history['obs'])
-            command = np.vstack(self.ep_history['command'])
-            action = np.vstack(self.ep_history['action'])
-
-            log_dict = {
-                'sim_time': self.ep_history['sim_time'],
-                'step': self.ep_history['step'],
-                'j2_pos': obs[:, 0],
-                'j4_pos': obs[:, 1],
-                'j6_pos': obs[:, 2],
-                'j2_vel': obs[:, 0 + 3],
-                'j4_vel': obs[:, 1 + 3],
-                'j6_vel': obs[:, 2 + 3],
-                'j2_ideal_vel': obs[:, 0 + 6],
-                'j4_ideal_vel': obs[:, 1 + 6],
-                'j6_ideal_vel': obs[:, 2 + 6],
-                'j2_torque': obs[:, 0 + 9],
-                'j4_torque': obs[:, 1 + 9],
-                'j6_torque': obs[:, 2 + 9],
-                'j2_cmd': command[:, 0],
-                'j4_cmd': command[:, 1],
-                'j6_cmd': command[:, 2],
-                'j2_act': action[:, 0],
-                'j6_act': action[:, 1],
-            }
-
-            for param, val in log_dict.items():
-                ep_logger[param].extend(list(val))
+        return np.array([x, z, rot])
