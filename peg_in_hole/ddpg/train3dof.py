@@ -3,16 +3,79 @@ import logging
 import tensorflow as tf
 import gymnasium as gym
 import numpy as np
-import hydra
+from omegaconf import DictConfig
+import neptune
 
 from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
-import peg_in_hole.vortex_envs.vortex_interface  # noqa: F401 Needed to register env to gym
+import peg_in_hole.tasks.kinova_gen2_env  # noqa: F401 Needed to register env to gym
+from peg_in_hole.utils.neptune import new_neptune_run
+
+# TODO: DEMAIN: Log at freq
+# TODO: DEMAIN: Log ep data
+# TODO: DEMAIN: Plots
 
 logger = logging.getLogger(__name__)
 
-RENDER = True
+
+def log_episode_data(neptune_run: neptune.Run, episode_data: dict, episode: int) -> dict:
+    ep_logger = neptune_run[f'episode/{episode}']
+
+    obs = np.vstack(episode_data['obs'])
+    command = np.vstack(episode_data['command'])
+    action = np.vstack(episode_data['action'])
+    reward = np.vstack(episode_data['reward'])
+    plug_force = np.vstack(episode_data['plug_force'])
+    plug_torque = np.vstack(episode_data['plug_torque'])
+    insertion_depth = np.vstack(episode_data['insertion_depth'])
+
+    log_dict = {
+        'step': episode_data['step'],
+        'j2_pos': obs[:, 0],
+        'j4_pos': obs[:, 1],
+        'j6_pos': obs[:, 2],
+        'j2_vel': obs[:, 0 + 3],
+        'j4_vel': obs[:, 1 + 3],
+        'j6_vel': obs[:, 2 + 3],
+        'j2_ideal_vel': obs[:, 0 + 6],
+        'j4_ideal_vel': obs[:, 1 + 6],
+        'j6_ideal_vel': obs[:, 2 + 6],
+        'j2_torque': obs[:, 0 + 9],
+        'j4_torque': obs[:, 1 + 9],
+        'j6_torque': obs[:, 2 + 9],
+        'j2_cmd': command[:, 0],
+        'j4_cmd': command[:, 1],
+        'j6_cmd': command[:, 2],
+        'j2_act': action[:, 0],
+        'j6_act': action[:, 1],
+        'reward': reward[:, 0],
+        'plug_force_x': plug_force[:, 0],
+        'plug_force_y': plug_force[:, 1],
+        'plug_force_z': plug_force[:, 2],
+        'plug_torque_x': plug_torque[:, 0],
+        'plug_torque_y': plug_torque[:, 1],
+        'plug_torque_z': plug_torque[:, 2],
+        'insertion_depth_x': insertion_depth[:, 0],
+        'insertion_depth_z': insertion_depth[:, 1],
+        'insertion_depth_rot': insertion_depth[:, 2],
+    }
+
+    for param, val in log_dict.items():
+        ep_logger[param].extend(list(val))
+
+    episode_log = {
+        'step': [],
+        'obs': [],
+        'command': [],
+        'action': [],
+        'reward': [],
+        'plug_force': [],
+        'plug_torque': [],
+        'insertion_depth': [],
+    }
+
+    return episode_log
 
 
 def policy(state, noise_object, actor_model, lower_bound, upper_bound):
@@ -28,28 +91,38 @@ def policy(state, noise_object, actor_model, lower_bound, upper_bound):
     return np.squeeze(legal_action)
 
 
-def train3dof():
-    env_name = 'vxUnjamming-v0'
-    if RENDER:
-        render_mode = 'human'
-    else:
-        render_mode = None
+def train3dof(cfg: DictConfig):
+    logger.info('Starting training of 3dof')
 
-    env = gym.make(env_name, render_mode=render_mode)
+    # General settings
+    task_cfg = cfg.task
+
+    # Neptune logger
+    run = new_neptune_run(neptune_cfg=cfg.neptune)
+    run['task_cfg'] = task_cfg
+
+    # Create the env
+    env_name = 'vxUnjamming-v0'
+    render_mode = 'human' if cfg.render else None
+
+    training_start_time = time.time()
+    env = gym.make(env_name, render_mode=render_mode, neptune_run=run, task_cfg=task_cfg)
+    print(f'init took: {time.time() - training_start_time} sec')
 
     num_states = env.observation_space.shape[0]
-    print('Size of State Space ->  {}'.format(num_states))
     num_actions = env.action_space.shape[0]
-    print('Size of Action Space ->  {}'.format(num_actions))
+
+    logger.info(f'Size of State Space: {num_states}')
+    logger.info(f'Size of Action Space: {num_states}')
 
     upper_bound = env.action_space.high
     lower_bound = env.action_space.low
+    logger.info(f'Max Value of Action: {upper_bound}')
+    logger.info(f'Min Value of Action: {lower_bound}')
 
-    print('Max Value of Action ->  {}'.format(upper_bound))
-    print('Min Value of Action ->  {}'.format(lower_bound))
-
-    std_dev = 0.2
-    ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(std_dev) * np.ones(1))
+    # Networks
+    noise_std_dev = task_cfg.rl_hparams.noise_std_dev
+    ou_noise = OUActionNoise(mean=np.zeros(1), std_deviation=float(noise_std_dev) * np.ones(1))
 
     actor_model = get_actor(num_states=num_states, num_actions=num_actions)
     critic_model = get_critic(num_states=num_states, num_actions=num_actions)
@@ -62,20 +135,16 @@ def train3dof():
     critic_target.set_weights(critic_model.get_weights())
 
     # Learning rate for actor-critic models
-    critic_lr = 0.0001
-    actor_lr = 0.0001
+    critic_lr = task_cfg.rl_hparams.critic_lr
+    actor_lr = task_cfg.rl_hparams.actor_lr
 
     critic_optimizer = tf.keras.optimizers.Adam(critic_lr)
     actor_optimizer = tf.keras.optimizers.Adam(actor_lr)
 
-    total_episodes = 50
-    # Discount factor for future rewards
-    gamma = 0.99
-    # Used to update target networks
-    tau = 0.001
+    total_episodes = task_cfg.rl_hparams.episodes
 
-    buffer_capacity = 200000
-    batch_size = 32
+    tau = task_cfg.rl_hparams.tau  # Used to update target networks
+
     buffer = Buffer(
         num_states=num_states,
         num_actions=num_actions,
@@ -85,12 +154,26 @@ def train3dof():
         critic_model=critic_model,
         target_critic=critic_target,
         critic_optimizer=critic_optimizer,
-        gamma=gamma,
-        buffer_capacity=buffer_capacity,
-        batch_size=batch_size,
+        gamma=task_cfg.rl_hparams.buffer.gamma,  # Discount factor for future rewards
+        buffer_capacity=task_cfg.rl_hparams.buffer.capacity,
+        batch_size=task_cfg.rl_hparams.buffer.batch_size,
     )
 
     # To store reward history of each episode
+    logging_freq = task_cfg.general.log_freq
+
+    # Save here the states at each log_freq
+    episode_log = {
+        'step': [],
+        'obs': [],
+        'command': [],
+        'action': [],
+        'reward': [],
+        'plug_force': [],
+        'plug_torque': [],
+        'insertion_depth': [],
+    }
+
     ep_reward_list = []
     ep_force_list = []
     ep_torque_list = []
@@ -101,81 +184,124 @@ def train3dof():
     avg_torque_list = []
     avg_height_list = []
 
-    start_time = time.time()
+    training_start_time = time.time()
 
     # Training
-    for ep in range(total_episodes):
+    for episode_count in range(total_episodes):
+        print(f'--------- Episode {episode_count} ---------')
         prev_state, _ = env.reset()
         # prev_state = prev_state[0]
         episodic_reward = 0
         episodic_force = 0
         episodic_torque = 0
 
-        count = 0
+        step_count = 0
         while True:
-            if ep == total_episodes - 1:
-                env.render()
-
+            # TODO: Move to function run_episode()
             tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
 
             action = policy(tf_prev_state, ou_noise, actor_model, lower_bound, upper_bound)
 
             # Recieve state and reward from environment.
-            state, reward, done, truncated, info = env.step(action)
+            obs, reward, done, truncated, info = env.step(action)
 
-            force = env.unwrapped.get_plug_force()
-            force_norm = np.sqrt(force.x**2.0 + force.y**2.0 + force.z**2.0)
+            plug_force = info['plug_force']
+            plug_torque = info['plug_torque']
+            command = info['command']
+            insertion_depth = info['insertion_depth']
 
-            torque = env.unwrapped.get_plug_torque()
-            torque_norm = np.sqrt(torque.x**2.0 + torque.y**2.0 + torque.z**2.0)
+            force_norm = np.linalg.norm(plug_force)
+            torque_norm = np.linalg.norm(plug_torque)
 
-            buffer.record((prev_state, action, reward, state))
+            # Update buffer
+            buffer.record((prev_state, action, reward, obs))
+            buffer.learn()
+
+            update_target(actor_target.variables, actor_model.variables, tau)
+            update_target(critic_target.variables, critic_model.variables, tau)
+
+            # Logging
             episodic_reward += reward
             episodic_force += force_norm
             episodic_torque += torque_norm
 
-            buffer.learn()
-            update_target(actor_target.variables, actor_model.variables, tau)
-            update_target(critic_target.variables, critic_model.variables, tau)
+            if step_count % logging_freq == 0:
+                log_dict = {
+                    'step': step_count,
+                    'obs': obs,
+                    'command': command,
+                    'action': action,
+                    'reward': reward,
+                    'plug_force': plug_force,
+                    'plug_torque': plug_torque,
+                    'insertion_depth': insertion_depth,
+                }
 
-            count += 1
+                for param, val in log_dict.items():
+                    episode_log[param].append(val)
+
+            step_count += 1
 
             # End this episode when `done` is True
             if done:
                 break
 
-            prev_state = state
+            prev_state = obs
+
+        # Log episode data
+        episode_log = log_episode_data(neptune_run=run, episode_data=episode_log, episode=episode_count)
 
         ep_reward_list.append(episodic_reward)
-        ep_force_list.append(episodic_force / count)  # average force over this episode
-        ep_torque_list.append(episodic_torque / count)  # average torque over this episode
 
-        print('Avg reward per step over episode: ' + str(episodic_reward / count))
-        print('Total reward over episode: ' + str(episodic_reward))
+        ep_avg_force = episodic_force / step_count
+        ep_force_list.append(ep_avg_force)  # average force over this episode
 
-        # Mean reward of last 100 episodes
+        ep_avg_torque = episodic_torque / step_count
+        ep_torque_list.append(ep_avg_torque)  # average torque over this episode
+
         avg_reward = np.mean(ep_reward_list[-100:])
-        print('Episode * {} * Avg Reward from last 100 episodes is ==> {}'.format(ep, avg_reward))
         avg_reward_list.append(avg_reward)
 
-        # Mean constraint force on plug of last 100 episodes
         avg_force = np.mean(ep_force_list[-100:])
-        print('Episode * {} * Avg Force is ==> {}'.format(ep, avg_force))
         avg_force_list.append(avg_force)
 
-        # Mean constraint force on plug of last 100 episodes
         avg_torque = np.mean(ep_torque_list[-100:])
-        print('Episode * {} * Avg Torque is ==> {}'.format(ep, avg_torque))
         avg_torque_list.append(avg_torque)
 
-        # End depth for this episode
-        insert_depth = env.unwrapped.get_insertion_depth()
-        print('Episode * {} * Insertion Height is ==> {}'.format(ep, insert_depth))
-        print('')
+        insert_depth = insertion_depth
         end_depth_list.append(insert_depth)
         avg_height = np.mean(end_depth_list[-100:])
         avg_height_list.append(avg_height)
 
+        ep_logger = run['data']
+        ep_data = {
+            'ep_reward': episodic_reward,
+            'ep_avg_force': ep_avg_force,
+            'ep_avg_torque': ep_avg_torque,
+            'ep_end_depth_x': insert_depth[0],
+            'ep_end_depth_z': insert_depth[1],
+            'ep_end_depth_rot': insert_depth[2],
+        }
+
+        for param, val in ep_data.items():
+            ep_logger[param].append(val)
+
+        # Print details about the performance of this episode
+        print('\nReward')
+        print(f'\tAvg per step: {episodic_reward / step_count}')
+        print(f'\tTotal: {episodic_reward}')
+        print(f'\tAvg from last 100 ep: {avg_reward}')  # Mean reward of last 100 episodes
+
+        print('\nForces')
+        print(f'\tAvg Force from last 100 ep: {avg_force}')  # Mean constraint force on plug of last 100 episodes
+        print(f'\tAvg Torque from last 100 ep: {avg_torque}')  # Mean constraint force on plug of last 100 episodes
+
+        print('\nInsertion depth')
+        print(f'\tX: {insert_depth[0]}')
+        print(f'\tZ: {insert_depth[1]}')
+        print(f'\tRot: {insert_depth[2]}')
+        print('')
+
     print('Last epoch reached.')
-    exec_time = time.time() - start_time
+    exec_time = time.time() - training_start_time
     print(f'Time to execute: {exec_time} [{exec_time/total_episodes} avg.]')

@@ -16,4 +16,6 @@ Note:
 - [ ] Send commands
 - [ ] Log measures
 - [ ] Plot logs
-- [ ] 
+
+## Resources
+- Check: [rl-games](https://github.com/Denys88/rl_games)

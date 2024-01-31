@@ -22,7 +22,7 @@ def main(cfg: DictConfig):
     logger.info('---------------- Peg-in-hole Package ----------------')
 
     try:
-        train3dof()
+        train3dof(cfg)
     except RuntimeError as e:
         logger.error(e, exc_info=True)
         raise e

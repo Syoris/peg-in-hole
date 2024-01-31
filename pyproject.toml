@@ -18,6 +18,8 @@ matplotlib = "3.7.4"
 python-json-logger = "^2.0.7"
 # tensorflow = "2.13.1"
 hydra-core = "^1.3.2"
+neptune = "^1.8.6"
+pyvortex = {path = "../pyvortex", develop = true}
 
 
 [build-system]
