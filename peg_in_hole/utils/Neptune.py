@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def new_neptune_run(neptune_cfg):
+    # Create new neptune run
     run_name = datetime.today().strftime('%Y-%m-%d_%H-%M_PH')
 
     logger.info('Initialization of neptune run')
