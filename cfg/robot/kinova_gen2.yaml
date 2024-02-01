@@ -1,32 +1,32 @@
 robot_name: kinova_gen2
 
 actuators:
-  j2: 
+  j2: # KA-75+
     name: joint_2
-    position_min: -360.
-    position_max: 360.
-    vel_min: -1.
-    vel_max: 1.
-    torque_min: -500.
-    torque_max: 500.
+    position_max: -40.  # deg  should be 47 to 313
+    position_min: -313.  # deg
+    vel_min: -36.  # deg/s
+    vel_max: 36.  # deg/s
+    torque_min: -12.  # Nm
+    torque_max: 12.  # Nm
 
-  j4: 
+  j4: # KA-75+
     name: joint_4
-    position_min: -360.
-    position_max: 360.
-    vel_min: -1.
-    vel_max: 1.
-    torque_min: -500.
-    torque_max: 500.
+    position_min: 30.
+    position_max: 330.
+    vel_min: -36.
+    vel_max: 36.
+    torque_min: -12.
+    torque_max: 12.
 
-  j6: 
+  j6: # KA-58
     name: joint_6
-    position_min: -360.
-    position_max: 360.
-    vel_min: -1.
-    vel_max: 1.
-    torque_min: -500.
-    torque_max: 500.
+    position_min: 65.
+    position_max: 295.
+    vel_min: -48.
+    vel_max: 48.
+    torque_min: -3.6
+    torque_max: 3.6
 
 links_length:
   L12: 0.2755

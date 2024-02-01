@@ -136,7 +136,7 @@ class RPL_Insert_3DoF(gym.Env):
         # Create a display window
         self.vx_interface.load_display()
         self.vx_interface.render_display(active=(self.render_mode == 'human'))
-        self.vx_interface.render_display(active=False)
+        # self.vx_interface.render_display(active=False)
 
         # Initialize Robot position
         self.go_home()
@@ -166,10 +166,10 @@ class RPL_Insert_3DoF(gym.Env):
 
         # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
         # Each one is 1x(n_joints). Total size: 4*(n_joints)
-        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
-        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
-        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
-        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
+        pos_min = [np.deg2rad(act.position_min) for act in self.robot_cfg.actuators.values()]
+        pos_max = [np.deg2rad(act.position_max) for act in self.robot_cfg.actuators.values()]
+        vel_min = [np.deg2rad(act.vel_min) for act in self.robot_cfg.actuators.values()]
+        vel_max = [np.deg2rad(act.vel_max) for act in self.robot_cfg.actuators.values()]
         torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
         torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
 
