@@ -135,7 +135,7 @@ class RPL_Insert_3DoF(gym.Env):
 
         # Create a display window
         self.vx_interface.load_display()
-        # self.vx_interface.render_display(active=(self.render_mode == 'human'))
+        self.vx_interface.render_display(active=(self.render_mode == 'human'))
         self.vx_interface.render_display(active=False)
 
         # Initialize Robot position
