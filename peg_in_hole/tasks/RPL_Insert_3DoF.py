@@ -1,10 +1,10 @@
+import time
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from pydantic import BaseModel
 import logging
 from omegaconf import OmegaConf
-import neptune
 
 from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
@@ -65,6 +65,8 @@ class RPL_Insert_3DoF(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 60}
 
     def __init__(self, render_mode=None, task_cfg=None):
+        init_start_time = time.time()
+
         """Load config"""
         self._get_robot_config()
 
@@ -79,12 +81,12 @@ class RPL_Insert_3DoF(gym.Env):
 
         """ RL Hyperparameters """
         # Actions
-        self.action_coeff = self.task_cfg.rl_hparams.action_coeff
+        self.action_coeff = self.task_cfg.rl.hparams.action_coeff
 
         # Reward
-        self.reward_min_threshold = self.task_cfg.rl_hparams.reward.reward_min_threshold
-        self.min_height_threshold = self.task_cfg.rl_hparams.reward.min_height_threshold
-        self.reward_weight = self.task_cfg.rl_hparams.reward.reward_weight
+        self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
+        self.min_height_threshold = self.task_cfg.rl.reward.min_height_threshold
+        self.reward_weight = self.task_cfg.rl.reward.reward_weight
 
         """ Sim Hyperparameters """
         # TODO: To YAML and pydantic data class
@@ -154,6 +156,8 @@ class RPL_Insert_3DoF(gym.Env):
         self.sim_completed = False
 
         self.reset()
+
+        print(f'Environment initialized. Time: {time.time() - init_start_time} sec')
 
     def _get_robot_config(self):
         """Load robot config from .yaml file"""

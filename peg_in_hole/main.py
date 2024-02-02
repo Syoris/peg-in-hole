@@ -6,6 +6,7 @@ from omegaconf import DictConfig
 
 from peg_in_hole.ddpg.train3dof import train3dof
 from peg_in_hole.ddpg.ddpg_sb3 import train_ddpg_3dof
+from peg_in_hole.utils.neptune import new_neptune_run
 
 """
 Time comp:
@@ -23,8 +24,11 @@ def main(cfg: DictConfig):
     logger.info('---------------- Peg-in-hole Package ----------------')
 
     try:
+        run = new_neptune_run(neptune_cfg=cfg.neptune)
+
+        # TODO: Select function based on cfg.task
         # train3dof(cfg)
-        train_ddpg_3dof(cfg)
+        train_ddpg_3dof(cfg, run)
 
     except RuntimeError as e:
         logger.error(e, exc_info=True)
@@ -33,6 +37,10 @@ def main(cfg: DictConfig):
     except Exception as e:  # noqa
         logger.error('uncaught exception: %s', traceback.format_exc())
         raise e
+
+    finally:
+        logger.info('Stopping neptune run')
+        run.stop()
 
     logger.info('Done')
 

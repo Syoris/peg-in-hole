@@ -1,0 +1,30 @@
+name: 'Insert_Kinova3DoF'
+
+rl:
+  algo: PPO
+  hparams:
+    n_episodes: 10  # Total num of episodes
+    action_coeff: 0.01  # coefficient the action will be multiplied by
+
+    ddpg: # DDPG specific hyperparameters
+      lr: 0.0001
+      tau: 0.001  # Used to update target networks
+      noise_std_dev: 0.2  # Standard dev of OUActionNoise
+
+      buffer:
+        gamma: 0.99  # Discount factor for future rewards
+        capacity: 200000
+        batch_size: 32
+    
+    ppo: # PPO specific hyperparameters
+      ...
+
+  reward:
+    reward_min_threshold: -5.0  # NOT CURRENTLY USED
+    min_height_threshold: 0.005  # NOT CURRENTLY USED
+    reward_weight: 0.04
+  
+
+env:
+  ...
+
