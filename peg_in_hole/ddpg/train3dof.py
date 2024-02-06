@@ -10,7 +10,7 @@ from peg_in_hole.settings import app_settings
 from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.tasks.RPL_Insert_3DoF  # noqa: F401 Needed to register env to gym
-from peg_in_hole.utils.neptune import new_neptune_run
+from peg_in_hole.utils.neptune import init_neptune_run
 
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ def train3dof(cfg: DictConfig):
     task_cfg = cfg.task
 
     # Neptune logger
-    run = new_neptune_run(neptune_cfg=cfg.neptune)
+    run = init_neptune_run(neptune_cfg=cfg.neptune)
     run['task_cfg'] = task_cfg
 
     # Create the env

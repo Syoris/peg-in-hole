@@ -1,3 +1,4 @@
+from datetime import datetime
 import time
 import logging
 from pathlib import Path
@@ -28,18 +29,18 @@ from stable_baselines3.common.results_plotter import load_results, ts2xy, plot_r
 logger = logging.getLogger(__name__)
 
 
-def get_model(env, task_cfg):
+def get_model(env, task_cfg, model_path=None):
     if task_cfg.rl.algo.lower() == 'ddpg':
-        model = initialize_ddpg_model(env, task_cfg)
+        model = initialize_ddpg_model(env, task_cfg, model_path)
     elif task_cfg.rl.algo.lower() == 'ppo':
-        model = initialize_ppo_model(env, task_cfg)
+        model = initialize_ppo_model(env, task_cfg, model_path)
     else:
         raise ValueError(f'Model {task_cfg.rl.algo} not recognized')
 
     return model
 
 
-def initialize_ddpg_model(env, task_cfg):
+def initialize_ddpg_model(env, task_cfg, model_path=None):
     lr = task_cfg.rl_hparams.critic_lr
     tau = task_cfg.rl_hparams.tau  # Used to update target networks
     gamma = task_cfg.rl_hparams.buffer.gamma  # Discount factor for future rewards
@@ -71,8 +72,11 @@ def initialize_ddpg_model(env, task_cfg):
     return model
 
 
-def initialize_ppo_model(env, task_cfg):
-    model = PPO('MlpPolicy', env, verbose=1)
+def initialize_ppo_model(env, task_cfg, model_path=None):
+    if model_path is not None:
+        model = PPO.load(model_path.as_posix(), env)
+    else:
+        model = PPO('MlpPolicy', env, verbose=1)
 
     return model
 
@@ -83,7 +87,18 @@ def train_ddpg_3dof(cfg: DictConfig, run: neptune.Run = None):
     """ Configs """
     task_cfg = cfg.task
     run['task_cfg'] = task_cfg
-    log_dir = Path(cfg.neptune.temp_save_path)
+    log_dir = Path(cfg.neptune.temp_save_path) / datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    """ Load past run if needed """
+    model_path = None
+    if cfg.run_name is not None:
+        models = run['model_checkpoints'].fetch()
+        latest = max(models.keys(), key=lambda x: int(x))
+        model_path = log_dir / f'rl_model_{latest}_steps.zip'
+
+        logger.info(f'Downloading model for {cfg.run_name}. Saving to {model_path.as_posix()}')
+        run[f'model_checkpoints/{latest}/model'].download(destination=model_path.as_posix())
 
     """ Environment """
     render_mode = 'human' if cfg.render else None
@@ -94,9 +109,10 @@ def train_ddpg_3dof(cfg: DictConfig, run: neptune.Run = None):
     env = Monitor(env, log_dir.as_posix())
 
     """ Model """
-    model = get_model(env, task_cfg)
-    n_ep = task_cfg.rl.hparams.n_episodes
-    n_steps = 250 * n_ep
+    model = get_model(env, task_cfg, model_path)
+    total_timesteps_steps = task_cfg.rl.hparams.n_timesteps
+    start_timestep = model.num_timesteps
+    n_timesteps = total_timesteps_steps - start_timestep
 
     """ Callbacks """
     save_freq = cfg.neptune.save_freq
@@ -110,17 +126,20 @@ def train_ddpg_3dof(cfg: DictConfig, run: neptune.Run = None):
         save_freq=save_freq,
         save_path=log_dir,
         save_replay_buffer=True,
+        start_timestep=start_timestep,
     )
-    max_ep_callback = StopTrainingOnMaxEpisodes(max_episodes=n_ep)
+    # max_ep_callback = StopTrainingOnMaxEpisodes(max_episodes=n_ep)
 
-    callbacks = [neptune_callback, max_ep_callback]
+    callbacks = [neptune_callback]
 
     """ Training """
-    model.learn(total_timesteps=n_steps, log_interval=10, progress_bar=True, callback=callbacks)
+    model.learn(
+        total_timesteps=n_timesteps, log_interval=10, progress_bar=True, callback=callbacks, reset_num_timesteps=False
+    )
     run.stop()
 
     """ Test """
-    test_train_ddpg_3dof(env.unwrapped, model)
+    # test_train_ddpg_3dof(env.unwrapped, model)
 
 
 def test_train_ddpg_3dof(env: RPL_Insert_3DoF, model):
