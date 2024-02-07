@@ -31,6 +31,7 @@ def test(cfg: DictConfig, run: neptune.Run = None):
     """ Configs """
     # task_cfg = cfg.task
     run['cfg'] = stringify_unsupported(cfg)
+    run['sys/tags'].add('test')
     log_dir = Path(cfg.neptune.temp_save_path) / datetime.today().strftime('%Y-%m-%d_%H-%M-%S_test')
     log_dir.mkdir(parents=True, exist_ok=True)
 

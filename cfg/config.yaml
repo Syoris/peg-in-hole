@@ -11,7 +11,7 @@ train:
 test:
   n_epochs: 5
   render: True
-  model_name: # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps
+  model_name: PH-90 # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps
 
 neptune:
   use_neptune: True

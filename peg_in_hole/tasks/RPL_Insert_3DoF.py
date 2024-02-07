@@ -10,23 +10,8 @@ from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
 
 logger = logging.getLogger(__name__)
-robot_logger = logging.getLogger('robot_state')
+# robot_logger = logging.getLogger('robot_state')
 
-""" Names in vortex scene """
-
-""" 
-TODO
-- Add logger
-- Robot settings to yaml
-- render option
-- Update function
-    - Get sim time
-    - Send command
-    - Read outputs
-    - Log everything in json file
-- Vortex log
-    - Deactivate or specify path
-"""
 
 """ Vortex Scene Inputs, Outputs and Parameters"""
 
