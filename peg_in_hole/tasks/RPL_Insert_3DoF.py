@@ -89,28 +89,7 @@ class RPL_Insert_3DoF(gym.Env):
         self.reward_weight = self.task_cfg.rl.reward.reward_weight
 
         """ Sim Hyperparameters """
-        # TODO: To YAML and pydantic data class
-        # Vortex
-        self.h = 1.0 / 100.0  # Simulation time step
-        self.t_init_step = 5.0  # Time to move arm to the insertion position
-        self.t_pause = 1.0  # Pause time
-        self.t_pre_insert = 5.0  # used to be 0.8 for 7DOF
-        self.t_insertion = 2.5
-        self.init_steps = int(self.t_init_step / self.h)  # Initialization steps
-        self.pause_steps = int(self.t_pause / self.h)  # Pause time step after one phase
-        self.pre_insert_steps = int(self.t_pre_insert / self.h)  # go up to the insertion phase
-        self.insertion_steps = int(self.t_insertion / self.h)  # Insertion time (steps)
-        self.max_insertion_steps = 2.0 * self.insertion_steps  # Maximum allowed time to insert
-        self.xpos_hole = 0.529  # x position of the hole
-        self.ypos_hole = -0.007  # y position of the hole
-        self.max_misalign = 2.0  # maximum misalignment of joint 7
-        self.min_misalign = -2.0  # minimum misalignment of joint 7
-        self.insertion_misalign = (np.pi / 180.0) * (
-            np.random.uniform(self.min_misalign, self.max_misalign)
-        )  # joint 6 misalignment, negative and positive
-        # self.insertion_misalign = (np.pi/180.0) * self.max_misalign    # joint 6 misalignment, set max
-        self.pre_insertz = 0.44  # z distance to be covered in pre-insertion phase
-        self.insertz = 0.07  # z distance to be covered in insertion phase, though may change with actions
+        self._init_env_params()
 
         """ Robot Parameters """
         # Link lengths
@@ -212,6 +191,39 @@ class RPL_Insert_3DoF(gym.Env):
             high=act_high_bound,
             dtype=np.float32,
         )
+
+    def _init_env_params(self):
+        """Initialize environment (Vortex) parameters from the task config file"""
+        # Vortex
+        self.h = self.task_cfg.env.h  # Simulation time step
+        self.t_init_step = self.task_cfg.env.t_init_step  # Time to move arm to the insertion position
+        self.t_pause = self.task_cfg.env.t_pause  # Pause time
+        self.t_pre_insert = self.task_cfg.env.t_pre_insert  # used to be 0.8 for 7DOF
+        self.t_insertion = self.task_cfg.env.t_insertion
+
+        # Steps numbers
+        self.init_steps = int(self.t_init_step / self.h)  # Initialization steps
+        self.pause_steps = int(self.t_pause / self.h)  # Pause time step after one phase
+        self.pre_insert_steps = int(self.t_pre_insert / self.h)  # go up to the insertion phase
+        self.insertion_steps = int(self.t_insertion / self.h)  # Insertion time (steps)
+        self.max_insertion_steps = 2.0 * self.insertion_steps  # Maximum allowed time to insert
+
+        # Peg and hole parameters
+        self.xpos_hole = self.task_cfg.env.xpos_hole  # x position of the hole
+        self.ypos_hole = self.task_cfg.env.ypos_hole  # y position of the hole
+        (
+            self.min_misalign,
+            self.max_misalign,
+        ) = self.task_cfg.env.misalignment_range  # maximum misalignment of joint 7 [deg]
+
+        # joint 6 misalignment, negative and positive [deg]
+        self.insertion_misalign = np.random.uniform(self.min_misalign, self.max_misalign)
+        # self.insertion_misalign = (np.pi/180.0) * self.max_misalign    # joint 6 misalignment, set max
+
+        self.pre_insertz = self.task_cfg.env.pre_insertz  # z distance to be covered in pre-insertion phase
+        self.insertz = (
+            self.task_cfg.env.insertz
+        )  # z distance to be covered in insertion phase, though may change with actions
 
     """ Actions """
 
@@ -353,9 +365,8 @@ class RPL_Insert_3DoF(gym.Env):
         super().reset(seed=seed)
 
         # Random parameters
-        self.insertion_misalign = (np.pi / 180.0) * (
-            np.random.uniform(self.min_misalign, self.max_misalign)
-        )  # joint 6 misalignment, negative and positive
+        # joint 6 misalignment, negative and positive
+        self.insertion_misalign = np.random.uniform(self.min_misalign, self.max_misalign)
         # print('Insertion misalignment: ' + str(self.insertion_misalign))
 
         # Reset Robot
@@ -504,8 +515,8 @@ class RPL_Insert_3DoF(gym.Env):
 
         elif step_types == self.insertion_steps:
             vel = down_speed / (step_types * self.h)
-            x_vel = vel * np.sin(self.insertion_misalign)
-            z_vel = vel * np.cos(self.insertion_misalign)
+            x_vel = vel * np.sin(np.deg2rad(self.insertion_misalign))
+            z_vel = vel * np.cos(np.deg2rad(self.insertion_misalign))
 
         else:
             print('STEP TYPES DOES NOT MATCH')
