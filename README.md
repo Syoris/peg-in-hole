@@ -6,6 +6,9 @@
 - `poetry shell`
 - `pip install tensorflow`
 
+**pytorch**
+`$ poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121`
+
 Note:
 - To have `.venv` in projec: `poetry config virtualenvs.in-project true`
 

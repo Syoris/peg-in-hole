@@ -1,0 +1,38 @@
+name: 'Insert_Kinova3DoF'
+
+rl:
+  algo: PPO
+  hparams:
+    n_timesteps: 12_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
+    action_coeff: 0.01  # coefficient the action will be multiplied by
+
+    ddpg: # DDPG specific hyperparameters
+      lr: 0.01
+      tau: 0.001  # Used to update target networks
+      noise_std_dev: 0.2  # Standard dev of OUActionNoise
+
+      buffer:
+        gamma: 0.99  # Discount factor for future rewards
+        capacity: 200000
+        batch_size: 32
+    
+    ppo: # PPO specific hyperparameters
+      ...
+
+  reward:
+    reward_min_threshold: -5.0  # NOT CURRENTLY USED
+    min_height_threshold: 0.005  # NOT CURRENTLY USED
+    reward_weight: 0.04
+  
+
+env:
+  h: 0.01  # Simulation time step
+  t_init_step: 5.0  # Time to move arm to the insertion position
+  t_pause: 1.0  # Pause time
+  t_pre_insert: 5.0  # used to be 0.8 for 7DOF
+  t_insertion: 2.5
+  xpos_hole: 0.529  # x position of the hole
+  ypos_hole: -0.007  # y position of the hole
+  misalignment_range: [0.0, 0.0]  # min/max misalignment of joint 7, [deg]
+  pre_insertz: 0.44  # z distance to be covered in pre-insertion phase
+  insertz: 0.07  # z distance to be covered in insertion phase, though may change with actions  

@@ -1,10 +1,10 @@
+import time
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from pydantic import BaseModel
 import logging
-from omegaconf import OmegaConf, DictConfig
-import neptune
+from omegaconf import OmegaConf
 
 from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
@@ -61,10 +61,12 @@ VX_OUT = VX_Outputs()
 """ Kinova Robot Interface """
 
 
-class KinovaGen2Env(gym.Env):
-    metadata = {'render_modes': ['human']}
+class RPL_Insert_3DoF(gym.Env):
+    metadata = {'render_modes': ['human'], 'render_fps': 60}
 
-    def __init__(self, render_mode=None, neptune_run: neptune.Run = None, task_cfg=None):
+    def __init__(self, render_mode=None, task_cfg=None):
+        init_start_time = time.time()
+
         """Load config"""
         self._get_robot_config()
 
@@ -79,36 +81,15 @@ class KinovaGen2Env(gym.Env):
 
         """ RL Hyperparameters """
         # Actions
-        self.action_coeff = self.task_cfg.rl_hparams.action_coeff
+        self.action_coeff = self.task_cfg.rl.hparams.action_coeff
 
         # Reward
-        self.reward_min_threshold = self.task_cfg.rl_hparams.reward.reward_min_threshold
-        self.min_height_threshold = self.task_cfg.rl_hparams.reward.min_height_threshold
-        self.reward_weight = self.task_cfg.rl_hparams.reward.reward_weight
+        self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
+        self.min_height_threshold = self.task_cfg.rl.reward.min_height_threshold
+        self.reward_weight = self.task_cfg.rl.reward.reward_weight
 
         """ Sim Hyperparameters """
-        # TODO: To YAML and pydantic data class
-        # Vortex
-        self.h = 1.0 / 100.0  # Simulation time step
-        self.t_init_step = 5.0  # Time to move arm to the insertion position
-        self.t_pause = 1.0  # Pause time
-        self.t_pre_insert = 5.0  # used to be 0.8 for 7DOF
-        self.t_insertion = 2.5
-        self.init_steps = int(self.t_init_step / self.h)  # Initialization steps
-        self.pause_steps = int(self.t_pause / self.h)  # Pause time step after one phase
-        self.pre_insert_steps = int(self.t_pre_insert / self.h)  # go up to the insertion phase
-        self.insertion_steps = int(self.t_insertion / self.h)  # Insertion time (steps)
-        self.max_insertion_steps = 2.0 * self.insertion_steps  # Maximum allowed time to insert
-        self.xpos_hole = 0.529  # x position of the hole
-        self.ypos_hole = -0.007  # y position of the hole
-        self.max_misalign = 2.0  # maximum misalignment of joint 7
-        self.min_misalign = -2.0  # minimum misalignment of joint 7
-        self.insertion_misalign = (np.pi / 180.0) * (
-            np.random.uniform(self.min_misalign, self.max_misalign)
-        )  # joint 6 misalignment, negative and positive
-        # self.insertion_misalign = (np.pi/180.0) * self.max_misalign    # joint 6 misalignment, set max
-        self.pre_insertz = 0.44  # z distance to be covered in pre-insertion phase
-        self.insertz = 0.07  # z distance to be covered in insertion phase, though may change with actions
+        self._init_env_params()
 
         """ Robot Parameters """
         # Link lengths
@@ -136,6 +117,7 @@ class KinovaGen2Env(gym.Env):
         # Create a display window
         self.vx_interface.load_display()
         self.vx_interface.render_display(active=(self.render_mode == 'human'))
+        # self.vx_interface.render_display(active=False)
 
         # Initialize Robot position
         self.go_home()
@@ -154,6 +136,8 @@ class KinovaGen2Env(gym.Env):
 
         self.reset()
 
+        print(f'Environment initialized. Time: {time.time() - init_start_time} sec')
+
     def _get_robot_config(self):
         """Load robot config from .yaml file"""
         config_path = app_settings.cfg_path / 'robot' / 'kinova_gen2.yaml'
@@ -165,10 +149,10 @@ class KinovaGen2Env(gym.Env):
 
         # Observation: [joint_positions, joint_velocities, joint_ideal_vel, joint_torques]
         # Each one is 1x(n_joints). Total size: 4*(n_joints)
-        pos_min = [act.position_min for act in self.robot_cfg.actuators.values()]
-        pos_max = [act.position_max for act in self.robot_cfg.actuators.values()]
-        vel_min = [act.vel_min for act in self.robot_cfg.actuators.values()]
-        vel_max = [act.vel_max for act in self.robot_cfg.actuators.values()]
+        pos_min = [np.deg2rad(act.position_min) for act in self.robot_cfg.actuators.values()]
+        pos_max = [np.deg2rad(act.position_max) for act in self.robot_cfg.actuators.values()]
+        vel_min = [np.deg2rad(act.vel_min) for act in self.robot_cfg.actuators.values()]
+        vel_max = [np.deg2rad(act.vel_max) for act in self.robot_cfg.actuators.values()]
         torque_min = [act.torque_min for act in self.robot_cfg.actuators.values()]
         torque_max = [act.torque_max for act in self.robot_cfg.actuators.values()]
 
@@ -190,7 +174,7 @@ class KinovaGen2Env(gym.Env):
         self.observation_space = spaces.Box(
             low=obs_low_bound,
             high=obs_high_bound,
-            dtype=np.float64,
+            dtype=np.float32,
         )
 
     def _init_action_space(self):
@@ -205,8 +189,41 @@ class KinovaGen2Env(gym.Env):
         self.action_space = spaces.Box(
             low=act_low_bound,
             high=act_high_bound,
-            dtype=np.float64,
+            dtype=np.float32,
         )
+
+    def _init_env_params(self):
+        """Initialize environment (Vortex) parameters from the task config file"""
+        # Vortex
+        self.h = self.task_cfg.env.h  # Simulation time step
+        self.t_init_step = self.task_cfg.env.t_init_step  # Time to move arm to the insertion position
+        self.t_pause = self.task_cfg.env.t_pause  # Pause time
+        self.t_pre_insert = self.task_cfg.env.t_pre_insert  # used to be 0.8 for 7DOF
+        self.t_insertion = self.task_cfg.env.t_insertion
+
+        # Steps numbers
+        self.init_steps = int(self.t_init_step / self.h)  # Initialization steps
+        self.pause_steps = int(self.t_pause / self.h)  # Pause time step after one phase
+        self.pre_insert_steps = int(self.t_pre_insert / self.h)  # go up to the insertion phase
+        self.insertion_steps = int(self.t_insertion / self.h)  # Insertion time (steps)
+        self.max_insertion_steps = 2.0 * self.insertion_steps  # Maximum allowed time to insert
+
+        # Peg and hole parameters
+        self.xpos_hole = self.task_cfg.env.xpos_hole  # x position of the hole
+        self.ypos_hole = self.task_cfg.env.ypos_hole  # y position of the hole
+        (
+            self.min_misalign,
+            self.max_misalign,
+        ) = self.task_cfg.env.misalignment_range  # maximum misalignment of joint 7 [deg]
+
+        # joint 6 misalignment, negative and positive [deg]
+        self.insertion_misalign = np.random.uniform(self.min_misalign, self.max_misalign)
+        # self.insertion_misalign = (np.pi/180.0) * self.max_misalign    # joint 6 misalignment, set max
+
+        self.pre_insertz = self.task_cfg.env.pre_insertz  # z distance to be covered in pre-insertion phase
+        self.insertz = (
+            self.task_cfg.env.insertz
+        )  # z distance to be covered in insertion phase, though may change with actions
 
     """ Actions """
 
@@ -318,7 +335,10 @@ class KinovaGen2Env(gym.Env):
         return self.obs, reward, self.sim_completed, False, info
 
     def render(self):
-        self.vx_interface.render_display()
+        if self.render_mode is None:
+            self.vx_interface.render_display(False)
+        elif self.render_mode == 'human':
+            self.vx_interface.render_display(True)
 
     def reset(self, seed=None, options=None):
         """Reset the environment.
@@ -345,10 +365,9 @@ class KinovaGen2Env(gym.Env):
         super().reset(seed=seed)
 
         # Random parameters
-        self.insertion_misalign = (np.pi / 180.0) * (
-            np.random.uniform(self.min_misalign, self.max_misalign)
-        )  # joint 6 misalignment, negative and positive
-        print('Insertion misalignment: ' + str(self.insertion_misalign))
+        # joint 6 misalignment, negative and positive
+        self.insertion_misalign = np.random.uniform(self.min_misalign, self.max_misalign)
+        # print('Insertion misalignment: ' + str(self.insertion_misalign))
 
         # Reset Robot
         self.vx_interface.reset_saved_frame()
@@ -357,7 +376,9 @@ class KinovaGen2Env(gym.Env):
         self.step_count = 0  # Step num in the episode
         self.sim_completed = False
 
-        env_info = {}
+        env_info = {
+            'insertion_misalignment': self.insertion_misalign,
+        }
 
         return self._get_robot_state(), env_info
 
@@ -394,7 +415,7 @@ class KinovaGen2Env(gym.Env):
         joint_torques = self._readJtorque()
         joint_ideal_vel = self.next_j_vel
 
-        return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques))
+        return np.concatenate((joint_poses, joint_vel, joint_ideal_vel, joint_torques), dtype=np.float32)
 
     def _get_step_info(self) -> dict:
         """Get info about the robot
@@ -420,21 +441,21 @@ class KinovaGen2Env(gym.Env):
         j4_pos = self.vx_interface.get_output(VX_OUT.j4_pos_real)
         j6_pos = self.vx_interface.get_output(VX_OUT.j6_pos_real)
 
-        return np.array([j2_pos, j4_pos, j6_pos])
+        return np.array([j2_pos, j4_pos, j6_pos], dtype=np.float32)
 
     def _readJvel(self):
         j2_vel = self.vx_interface.get_output(VX_OUT.j2_vel_real)
         j4_vel = self.vx_interface.get_output(VX_OUT.j4_vel_real)
         j6_vel = self.vx_interface.get_output(VX_OUT.j6_vel_real)
 
-        return np.array([j2_vel, j4_vel, j6_vel])
+        return np.array([j2_vel, j4_vel, j6_vel], dtype=np.float32)
 
     def _readJtorque(self):
         j2_t = self.vx_interface.get_output(VX_OUT.j2_torque)
         j4_t = self.vx_interface.get_output(VX_OUT.j4_torque)
         j6_t = self.vx_interface.get_output(VX_OUT.j6_torque)
 
-        return np.array([j2_t, j4_t, j6_t])
+        return np.array([j2_t, j4_t, j6_t], dtype=np.float32)
 
     def _readJvel_target(self):
         j2_target = self.vx_interface.get_input(VX_IN.j2_vel_id)
@@ -494,8 +515,8 @@ class KinovaGen2Env(gym.Env):
 
         elif step_types == self.insertion_steps:
             vel = down_speed / (step_types * self.h)
-            x_vel = vel * np.sin(self.insertion_misalign)
-            z_vel = vel * np.cos(self.insertion_misalign)
+            x_vel = vel * np.sin(np.deg2rad(self.insertion_misalign))
+            z_vel = vel * np.cos(np.deg2rad(self.insertion_misalign))
 
         else:
             print('STEP TYPES DOES NOT MATCH')
