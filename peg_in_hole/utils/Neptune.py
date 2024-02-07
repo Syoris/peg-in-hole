@@ -51,7 +51,7 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = 
     return run
 
 
-class NeptuneCallback(BaseCallback):
+class NeptuneTrainCallback(BaseCallback):
     def __init__(
         self,
         neptune_run: neptune.Run,
@@ -313,3 +313,189 @@ class NeptuneCallback(BaseCallback):
                 print(f'Saving model VecNormalize to {vec_normalize_path}')
 
             self.neptune_run['model_checkpoints/vec_normalize'].upload(vec_normalize_path.as_posix())
+
+
+class NeptuneTestCallback:
+    def __init__(
+        self,
+        neptune_run: neptune.Run,
+        env_log_freq: int,
+        verbose: int = 1,
+        start_timestep: int = 0,
+    ):
+        # Base parameters
+        # Number of time the callback was called
+        self.num_timesteps = 0  # type: int
+        self.verbose = verbose
+
+        self.neptune_run = neptune_run
+
+        self.env_log_freq = env_log_freq
+
+        self.n_episodes = 0
+        self.episodic_reward = 0
+        self.episodic_force = 0
+        self.episodic_torque = 0
+        self.ep_n_steps = 0
+        self.num_timesteps = start_timestep
+        self.step_env = {}  # Values of the env at the current step
+
+        self.episode_log = {
+            'step': [],
+            'obs': [],
+            'command': [],
+            'action': [],
+            'reward': [],
+            'plug_force': [],
+            'plug_torque': [],
+            'insertion_depth': [],
+        }
+
+    def _on_test_end(self) -> None:
+        ...
+
+    def on_step(self, obs, reward, terminated, truncated, info, action, reset_info) -> bool:
+        self.num_timesteps += 1
+
+        self.step_env = {
+            'obs': obs,
+            'reward': reward,
+            'done': terminated,
+            'truncated': truncated,
+            'infos': info,
+            'action': action,
+            'reset_info': reset_info,
+        }
+
+        # Record environment data
+        if self.num_timesteps % self.env_log_freq == 0:
+            self.record_env_step()
+
+        # If episode over, send data to neptune
+        assert 'done' in self.step_env, '`done` variable is not defined'
+        episode_done = self.step_env.get('done', None)
+        if episode_done:
+            self.send_ep_to_neptune()
+            self.n_episodes += 1
+
+        return True
+
+    def record_env_step(self):
+        # Observations
+        obs = self.step_env.get('obs', None)
+        infos = self.step_env.get('infos', None)
+        command = infos['command']
+        plug_force = infos['plug_force']
+        plug_torque = infos['plug_torque']
+        insertion_depth = infos['insertion_depth']
+
+        action = self.step_env.get('action', None)
+        reward = self.step_env.get('reward', None)
+
+        force_norm = np.linalg.norm(plug_force)
+        torque_norm = np.linalg.norm(plug_torque)
+        self.episodic_reward += reward
+        self.episodic_force += force_norm
+        self.episodic_torque += torque_norm
+        self.ep_n_steps += self.env_log_freq
+
+        log_dict = {
+            'step': self.num_timesteps,
+            'obs': obs,
+            'command': command,
+            'action': action,
+            'reward': reward,
+            'plug_force': plug_force,
+            'plug_torque': plug_torque,
+            'insertion_depth': insertion_depth,
+        }
+
+        for param, val in log_dict.items():
+            self.episode_log[param].append(val)
+
+    def send_ep_to_neptune(self):
+        """Send episode data to neptune."""
+        # ----- Episode observations -----
+        ep_logger = self.neptune_run[f'episode/{self.n_episodes}']
+
+        obs = np.vstack(self.episode_log['obs'])
+        command = np.vstack(self.episode_log['command'])
+        action = np.vstack(self.episode_log['action'])
+        reward = np.vstack(self.episode_log['reward'])
+        plug_force = np.vstack(self.episode_log['plug_force'])
+        plug_torque = np.vstack(self.episode_log['plug_torque'])
+        insertion_depth = np.vstack(self.episode_log['insertion_depth'])
+
+        log_dict = {
+            'step': self.episode_log['step'],
+            'j2_pos': obs[:, 0],
+            'j4_pos': obs[:, 1],
+            'j6_pos': obs[:, 2],
+            'j2_vel': obs[:, 0 + 3],
+            'j4_vel': obs[:, 1 + 3],
+            'j6_vel': obs[:, 2 + 3],
+            'j2_ideal_vel': obs[:, 0 + 6],
+            'j4_ideal_vel': obs[:, 1 + 6],
+            'j6_ideal_vel': obs[:, 2 + 6],
+            'j2_torque': obs[:, 0 + 9],
+            'j4_torque': obs[:, 1 + 9],
+            'j6_torque': obs[:, 2 + 9],
+            'j2_cmd': command[:, 0],
+            'j4_cmd': command[:, 1],
+            'j6_cmd': command[:, 2],
+            'j2_act': action[:, 0],
+            'j6_act': action[:, 1],
+            'reward': reward[:, 0],
+            'plug_force_x': plug_force[:, 0],
+            'plug_force_y': plug_force[:, 1],
+            'plug_force_z': plug_force[:, 2],
+            'plug_torque_x': plug_torque[:, 0],
+            'plug_torque_y': plug_torque[:, 1],
+            'plug_torque_z': plug_torque[:, 2],
+            'insertion_depth_x': insertion_depth[:, 0],
+            'insertion_depth_z': insertion_depth[:, 1],
+            'insertion_depth_rot': insertion_depth[:, 2],
+        }
+
+        for param, val in log_dict.items():
+            ep_logger[param].extend(list(val))
+
+        # Reset infos
+        self.neptune_run[f'episode/misaligment/{self.n_episodes}'] = self.step_env['reset_info'][
+            'insertion_misalignment'
+        ]
+        # ep_logger['insertion_misalignment'] = self.step_env['reset_info']['insertion_misalignment']
+
+        # ----- Episode summary -----
+        last_insert_depth = insertion_depth[-1]
+        ep_avg_force = self.episodic_force / self.ep_n_steps
+        ep_avg_torque = self.episodic_torque / self.ep_n_steps
+
+        ep_data = {
+            'ep_reward': self.episodic_reward,
+            'ep_avg_force': ep_avg_force,
+            'ep_avg_torque': ep_avg_torque,
+            'ep_end_depth_x': last_insert_depth[0],
+            'ep_end_depth_z': last_insert_depth[1],
+            'ep_end_depth_rot': last_insert_depth[2],
+        }
+
+        ep_logger = self.neptune_run['data']
+        for param, val in ep_data.items():
+            ep_logger[param].append(value=val, step=self.num_timesteps)
+
+        # Reset episodic data
+        self.episode_log = {
+            'step': [],
+            'obs': [],
+            'command': [],
+            'action': [],
+            'reward': [],
+            'plug_force': [],
+            'plug_torque': [],
+            'insertion_depth': [],
+        }
+        self.ep_n_steps = 0
+        self.episodic_reward = 0
+        self.episodic_force = 0
+        self.episodic_torque = 0

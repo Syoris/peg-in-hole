@@ -16,7 +16,7 @@ from peg_in_hole.settings import app_settings
 # from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
 # from peg_in_hole.ddpg.networks import get_actor, get_critic
 import peg_in_hole.tasks.RPL_Insert_3DoF  # noqa: F401 Needed to register env to gym
-from peg_in_hole.utils.neptune import NeptuneCallback
+from peg_in_hole.utils.neptune import NeptuneTrainCallback
 from peg_in_hole.tasks.RPL_Insert_3DoF import RPL_Insert_3DoF
 from peg_in_hole.rl_algos.rl_algos import get_model
 
@@ -73,7 +73,7 @@ def train(cfg: DictConfig, run: neptune.Run = None):
     env_log_freq = cfg.neptune.env_log_freq
     log_env = cfg.neptune.log_env
 
-    neptune_callback = NeptuneCallback(
+    neptune_callback = NeptuneTrainCallback(
         neptune_run=run,
         log_env=log_env,
         env_log_freq=env_log_freq,

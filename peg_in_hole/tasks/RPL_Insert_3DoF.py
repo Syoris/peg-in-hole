@@ -365,7 +365,9 @@ class RPL_Insert_3DoF(gym.Env):
         self.step_count = 0  # Step num in the episode
         self.sim_completed = False
 
-        env_info = {}
+        env_info = {
+            'insertion_misalignment': self.insertion_misalign,
+        }
 
         return self._get_robot_state(), env_info
 
