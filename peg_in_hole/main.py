@@ -4,8 +4,8 @@ import traceback
 import hydra
 from omegaconf import DictConfig
 
-from peg_in_hole.ddpg.train3dof import train3dof
-from peg_in_hole.ddpg.ddpg_sb3 import train_ddpg_3dof
+from peg_in_hole.train import train
+from peg_in_hole.test import test
 from peg_in_hole.utils.neptune import init_neptune_run
 
 """
@@ -26,9 +26,9 @@ def main(cfg: DictConfig):
     try:
         run = init_neptune_run(cfg.run_name, neptune_cfg=cfg.neptune)
 
-        # TODO: Select function based on cfg.task
-        # train3dof(cfg)
-        train_ddpg_3dof(cfg, run)
+        train(cfg, run)
+
+        test(cfg)
 
     except RuntimeError as e:
         logger.error(e, exc_info=True)

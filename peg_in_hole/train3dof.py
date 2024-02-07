@@ -7,8 +7,8 @@ from omegaconf import DictConfig
 import neptune
 
 from peg_in_hole.settings import app_settings
-from peg_in_hole.ddpg.buffer import OUActionNoise, Buffer, update_target
-from peg_in_hole.ddpg.networks import get_actor, get_critic
+from peg_in_hole.rl_algos.buffer import OUActionNoise, Buffer, update_target
+from peg_in_hole.rl_algos.networks import get_actor, get_critic
 import peg_in_hole.tasks.RPL_Insert_3DoF  # noqa: F401 Needed to register env to gym
 from peg_in_hole.utils.neptune import init_neptune_run
 
