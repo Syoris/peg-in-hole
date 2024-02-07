@@ -13,7 +13,7 @@ from typing import Union  # noqa
 logger = logging.getLogger(__name__)
 
 
-def init_neptune_run(run_name: Union[str, None], neptune_cfg) -> neptune.Run:
+def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = False) -> neptune.Run:
     """Initialize a neptune run. If neptune_run is None, create a new run. Else, tryies to resume the run.
 
     Args:
@@ -26,10 +26,12 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg) -> neptune.Run:
     # Create new neptune run
     if run_name is not None:
         logger.info(f'Loading existing run: {run_name}')
+        mode = 'read-only' if read_only else 'async'
         run = neptune.init_run(
             with_id=run_name,
             project=neptune_cfg.project_name,
             api_token=neptune_cfg.api_token,
+            mode=mode,
         )
 
     else:

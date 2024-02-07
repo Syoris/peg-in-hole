@@ -24,11 +24,13 @@ def main(cfg: DictConfig):
     logger.info('---------------- Peg-in-hole Package ----------------')
 
     try:
-        run = init_neptune_run(cfg.run_name, neptune_cfg=cfg.neptune)
+        if cfg.run == 'train':
+            run = init_neptune_run(cfg.train.run_name, neptune_cfg=cfg.neptune)
+            train(cfg, run)
 
-        train(cfg, run)
-
-        test(cfg)
+        elif cfg.run == 'test':
+            run = init_neptune_run(None, neptune_cfg=cfg.neptune)
+            test(cfg, run)
 
     except RuntimeError as e:
         logger.error(e, exc_info=True)

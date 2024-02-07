@@ -1,10 +1,17 @@
 defaults:
   - task: RPL_Insert_3DoF
   - _self_
-  
-render: False
-test: False
-run_name: PH-90
+
+run: test  # train, test or both (not implemented)
+
+train:
+  render: False
+  run_name: # PH-90  # If not empty, load and resume this run
+
+test:
+  n_epochs: 5
+  render: True
+  model_name: PH-96  # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps
 
 neptune:
   use_neptune: True

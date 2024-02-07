@@ -32,26 +32,28 @@ logger = logging.getLogger(__name__)
 
 def train(cfg: DictConfig, run: neptune.Run = None):
     logger.info('Starting training of 3dof')
+    logger.info('##### Training #####')
+    logger.info(f'Task: {cfg.task.name}')
 
     """ Configs """
     task_cfg = cfg.task
-    run['task_cfg'] = task_cfg
+    run['cfg'] = stringify_unsupported(cfg)
     log_dir = Path(cfg.neptune.temp_save_path) / datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
     log_dir.mkdir(parents=True, exist_ok=True)
 
     """ Load past run if needed """
     model_path = None
-    if cfg.run_name is not None:
+    if cfg.train.run_name is not None:
         models = run['model_checkpoints'].fetch()
         latest = max(models.keys(), key=lambda x: int(x))
         model_path = log_dir / f'rl_model_{latest}_steps.zip'
 
-        logger.info(f'Downloading model for {cfg.run_name}. Saving to {model_path.as_posix()}')
+        logger.info(f'Downloading model for {cfg.train.run_name}. Saving to {model_path.as_posix()}')
         run[f'model_checkpoints/{latest}/model'].download(destination=model_path.as_posix())
 
     """ Environment """
     # TODO: Create env based on config
-    render_mode = 'human' if cfg.render else None
+    render_mode = 'human' if cfg.train.render else None
     # env = gym.make(env_name, render_mode=render_mode, task_cfg=task_cfg)
     env = RPL_Insert_3DoF(render_mode=render_mode, task_cfg=task_cfg)
     check_env(env)
@@ -89,9 +91,6 @@ def train(cfg: DictConfig, run: neptune.Run = None):
         total_timesteps=n_timesteps, log_interval=10, progress_bar=True, callback=callbacks, reset_num_timesteps=False
     )
     run.stop()
-
-    """ Test """
-    # test_train_ddpg_3dof(env.unwrapped, model)
 
 
 if __name__ == '__main__':
