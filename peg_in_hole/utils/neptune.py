@@ -85,6 +85,7 @@ class NeptuneTrainCallback(BaseCallback):
         self.episodic_torque = 0
         self.ep_n_steps = 0
         self.num_timesteps = start_timestep
+        self.rewards_list = []  # TODO: Load past reward on resume
 
         self.episode_log = {
             'step': [],
@@ -191,7 +192,7 @@ class NeptuneTrainCallback(BaseCallback):
 
     def send_ep_to_neptune(self):
         """Send episode data to neptune."""
-        # Episode observations
+        # ----- Episode observations -----
         if self.log_env:
             ep_id = self.n_episodes % self.neptune_n_episodes
 
@@ -252,7 +253,7 @@ class NeptuneTrainCallback(BaseCallback):
             for param, val in log_dict.items():
                 ep_logger[param].extend(list(val))
 
-        # Episode summary
+        # ----- Episode summary -----
         last_insert_depth = insertion_depth[-1]
         ep_avg_force = self.episodic_force / self.ep_n_steps
         ep_avg_torque = self.episodic_torque / self.ep_n_steps
@@ -269,6 +270,11 @@ class NeptuneTrainCallback(BaseCallback):
         ep_logger = self.neptune_run['data']
         for param, val in ep_data.items():
             ep_logger[param].append(value=val, step=self.num_timesteps)
+
+        # Mean reward of the last 100 episodes
+        self.rewards_list.append(self.episodic_reward)
+        mean_reward = np.mean(self.rewards_list[-100:])
+        self.neptune_run['data/mean_ep_reward'].append(mean_reward, step=self.num_timesteps)
 
         # Reset episodic data
         self.episode_log = {

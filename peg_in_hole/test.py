@@ -56,7 +56,7 @@ def test(cfg: DictConfig, run: neptune.Run = None):
     """ Callbacks """
     neptune_test_callback = NeptuneTestCallback(
         neptune_run=run,
-        env_log_freq=cfg.neptune.env_log_freq,
+        env_log_freq=cfg.test.log_freq,
     )
 
     """ Test the trained model """

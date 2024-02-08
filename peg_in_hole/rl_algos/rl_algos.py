@@ -44,14 +44,15 @@ def get_model(env, task_cfg, model_path=None, model_type=None):
 
 
 def initialize_ddpg_model(env, task_cfg, model_path=None):
-    lr = task_cfg.rl_hparams.critic_lr
-    tau = task_cfg.rl_hparams.tau  # Used to update target networks
-    gamma = task_cfg.rl_hparams.buffer.gamma  # Discount factor for future rewards
-    buffer_capacity = task_cfg.rl_hparams.buffer.capacity
-    batch_size = task_cfg.rl_hparams.buffer.batch_size
+    ddpg_params = task_cfg.rl.hparams.ddpg
+    lr = ddpg_params.lr
+    tau = ddpg_params.tau  # Used to update target networks
+    gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
+    buffer_capacity = ddpg_params.buffer.capacity
+    batch_size = ddpg_params.buffer.batch_size
     learning_start = 1
 
-    noise_std_dev = task_cfg.rl_hparams.noise_std_dev
+    noise_std_dev = ddpg_params.noise_std_dev
 
     action_noise = OrnsteinUhlenbeckActionNoise(
         mean=np.zeros(env.action_space.shape[-1]),
