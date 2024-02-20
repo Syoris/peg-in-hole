@@ -24,12 +24,12 @@ class VX_Inputs(BaseModel):
 
 class VX_Outputs(BaseModel):
     hand_pos_rot: str = 'hand_pos_rot'
-    j2_pos_real: str = 'j2_pos_real'
-    j4_pos_real: str = 'j4_pos_real'
-    j6_pos_real: str = 'j6_pos_real'
-    j2_vel_real: str = 'j2_vel_real'
-    j4_vel_real: str = 'j4_vel_real'
-    j6_vel_real: str = 'j6_vel_real'
+    j2_pos_real: str = 'j2_pos'
+    j4_pos_real: str = 'j4_pos'
+    j6_pos_real: str = 'j6_pos'
+    j2_vel_real: str = 'j2_vel'
+    j4_vel_real: str = 'j4_vel'
+    j6_vel_real: str = 'j6_vel'
     j2_torque: str = 'j2_torque'
     j4_torque: str = 'j4_torque'
     j6_torque: str = 'j6_torque'
@@ -87,7 +87,10 @@ class RPL_Insert_3DoF(gym.Env):
         """ Load Vortex Scene """
         # Define the setup and scene file paths
         self.setup_file = app_settings.vortex_resources_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
-        self.content_file = app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
+        # self.content_file = app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
+        self.content_file = (
+            app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming' / 'Scenes' / 'kinova_peg-in-hole.vxscene'
+        )
 
         # Create the Vortex Application
         self.vx_interface = VortexInterface()
@@ -149,9 +152,9 @@ class RPL_Insert_3DoF(gym.Env):
 
         # Minimum and Maximum joint force/torque limits (in N*m)
         self.forces_range = {}
-        self.forces_range['j2_for_min'], self.forces_range['j2_for_max'] = (torque_min[0], torque_max[0])
-        self.forces_range['j4_for_min'], self.forces_range['j4_for_max'] = (torque_min[1], torque_max[1])
-        self.forces_range['j6_for_min'], self.forces_range['j6_for_max'] = (torque_min[2], torque_max[2])
+        self.forces_range['j2_torque_min'], self.forces_range['j2_torque_max'] = (torque_min[0], torque_max[0])
+        self.forces_range['j4_torque_min'], self.forces_range['j4_torque_max'] = (torque_min[1], torque_max[1])
+        self.forces_range['j6_torque_min'], self.forces_range['j6_torque_max'] = (torque_min[2], torque_max[2])
 
         obs_low_bound = np.concatenate((pos_min, vel_min, vel_min, torque_min))
         obs_high_bound = np.concatenate((pos_max, vel_max, vel_max, torque_max))
