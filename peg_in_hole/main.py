@@ -7,14 +7,6 @@ from omegaconf import DictConfig
 from peg_in_hole.train import train
 from peg_in_hole.test import test
 
-"""
-Time comp:
-For 50 steps, w/ rendering
-old code: 207.0949604511261 [4.141899209022522 avg.]
-new code: 113.9709882736206 [2.279419765472412 avg.]
-new version: 
-"""
-
 logger = logging.getLogger(__name__)
 
 

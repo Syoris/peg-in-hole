@@ -5,6 +5,7 @@ import numpy as np
 from pydantic import BaseModel
 import logging
 from omegaconf import OmegaConf
+import pandas as pd
 
 from pyvortex.vortex_interface import VortexInterface, AppMode
 from peg_in_hole.settings import app_settings
@@ -23,7 +24,6 @@ class VX_Inputs(BaseModel):
 
 
 class VX_Outputs(BaseModel):
-    hand_pos_rot: str = 'hand_pos_rot'
     j2_pos_real: str = 'j2_pos'
     j4_pos_real: str = 'j4_pos'
     j6_pos_real: str = 'j6_pos'
@@ -33,6 +33,7 @@ class VX_Outputs(BaseModel):
     j2_torque: str = 'j2_torque'
     j4_torque: str = 'j4_torque'
     j6_torque: str = 'j6_torque'
+    hand_pos_rot: str = 'hand_pos_rot'
     socket_force: str = 'socket_force'
     socket_torque: str = 'socket_torque'
     plug_force: str = 'plug_force'
@@ -86,8 +87,12 @@ class RPL_Insert_3DoF(gym.Env):
 
         """ Load Vortex Scene """
         # Define the setup and scene file paths
-        self.setup_file = app_settings.vortex_resources_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
-        # self.content_file = app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming/kinova_gen2_sq_peg3dof.vxscene'
+        # self.setup_file = app_settings.vortex_resources_path / 'config_withgraphics.vxc'  # 'config_withoutgraphics.vxc'
+        self.setup_file = app_settings.vortex_resources_path / 'config.vxc'  # 'config_withoutgraphics.vxc'
+
+        # self.content_file = (
+        #     app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming' / '_old' / 'kinova_gen2_sq_peg3dof.vxscene'
+        # )
         self.content_file = (
             app_settings.vortex_resources_path / 'Kinova Gen2 Unjamming' / 'Scenes' / 'kinova_peg-in-hole.vxscene'
         )
@@ -108,7 +113,11 @@ class RPL_Insert_3DoF(gym.Env):
         # self.vx_interface.render_display(active=False)
 
         # Initialize Robot position
+        self.df = pd.DataFrame()
         self.go_home()
+
+        self.df.set_index('time', inplace=True)
+        # self.df.to_csv('robot_state_old.csv')
 
         # Set parameters values. Done after going home so its not limited by joint torques
         self.vx_interface.set_app_mode(AppMode.EDITING)
@@ -257,8 +266,8 @@ class RPL_Insert_3DoF(gym.Env):
 
         th_current = self._readJpos()
         pos_current = self._read_tips_pos_fk(th_current)
-        print('X after Phase 2:')
-        print(pos_current[0])
+        print('X, Z, rot after Phase 2:')
+        print(f'{pos_current[0]}, {pos_current[1]}, {pos_current[2]}')
 
         # Phase 2 pause
         self.command = np.array([0.0, 0.0, 0.0])
@@ -383,6 +392,27 @@ class RPL_Insert_3DoF(gym.Env):
 
         self.sim_time = self.vx_interface.app.getSimulationTime()
         self.obs = self._get_robot_state()
+
+        step_log = {
+            'time': self.sim_time,
+            'j2_pos': self.obs[0],
+            'j4_pos': self.obs[1],
+            'j6_pos': self.obs[2],
+            'j2_vel': self.obs[3],
+            'j4_vel': self.obs[4],
+            'j6_vel': self.obs[5],
+            'j2_ideal_vel': self.obs[6],
+            'j4_ideal_vel': self.obs[7],
+            'j6_ideal_vel': self.obs[8],
+            'j2_torque': self.obs[9],
+            'j4_torque': self.obs[10],
+            'j6_torque': self.obs[11],
+            'j2_cmd': self.command[0],
+            'j4_cmd': self.command[1],
+            'j6_cmd': self.command[2],
+        }
+
+        self.df = pd.concat([self.df, pd.DataFrame(step_log, index=[0])], ignore_index=True)
 
     """ Vortex interface functions """
 

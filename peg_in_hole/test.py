@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 import logging
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckA
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,7 +30,7 @@ def test(cfg: DictConfig):
     logger.info('##### Testing trained model #####')
     logger.info(f'Task: {cfg.task.name}')
 
-    if cfg.neptune.use_neptune is not None:
+    if cfg.neptune.use_neptune is not False:
         run = init_neptune_run(cfg.train.run_name, neptune_cfg=cfg.neptune)
     else:
         run = None
@@ -51,7 +53,7 @@ def test(cfg: DictConfig):
     model = None
 
     model_params_for_run = None
-    if cfg.test.model_name is not None:
+    if cfg.test.model_name is not None and cfg.test.model_name != 'None':
         model_path, model_type = download_model_from_run(model_path, cfg.test.model_name, cfg)
 
         model, model_params = get_model(env, cfg.task, model_path, model_type=model_type)
@@ -70,12 +72,20 @@ def test(cfg: DictConfig):
             env_log_freq=cfg.test.log_freq,
         )
 
+    """ Rendering speed """
+    render_speed = 0.75  # 1 is normal speed, 0.5 is half speed, 2 is double speed
+    ts = cfg.task.env.h
+    dt = ts / render_speed
+    print(f'time_delta: {dt}')
+
     """ Test the trained model """
     obs, reset_info = env.reset()
     n_epochs = cfg.test.n_epochs
     n_steps = n_epochs * 250
 
-    for _ in range(n_steps):
+    for i in range(n_steps):
+        step_start_time = time.time()
+
         if model is not None:
             action, _states = model.predict(obs)
             # action = env.action_space.sample()  # Random action
@@ -88,4 +98,7 @@ def test(cfg: DictConfig):
 
         if terminated:
             obs, reset_info = env.reset()
-    ...
+
+        # Wait for time period
+        while (time.time() - step_start_time) < dt and render_mode is not None:
+            time.sleep(0.001)
