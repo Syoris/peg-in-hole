@@ -46,7 +46,7 @@ def test(cfg: DictConfig):
     """ Environment """
     render_mode = 'human' if cfg.test.render else None
     env = RPL_Insert_3DoF(render_mode=render_mode, task_cfg=cfg.task)
-    check_env(env)
+    # check_env(env)
 
     """ Model """
     model_path = log_dir
@@ -76,7 +76,6 @@ def test(cfg: DictConfig):
     render_speed = 0.75  # 1 is normal speed, 0.5 is half speed, 2 is double speed
     ts = cfg.task.env.h
     dt = ts / render_speed
-    print(f'time_delta: {dt}')
 
     """ Test the trained model """
     obs, reset_info = env.reset()
