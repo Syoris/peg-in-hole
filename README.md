@@ -1,5 +1,8 @@
 # peg-in-hole
 
+## To run
+`$ poetry run ./peg_in_hole/main.py`
+
 ## Installation
 - Add `VORTEX_INSTALLATION_PATH` to your user env. variable (i.e. `C:\CM Labs\Vortex Studio 2023.8`)
 - `poetry install`

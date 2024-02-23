@@ -347,12 +347,18 @@ class NeptuneTestCallback:
         self.env_log_freq = env_log_freq
 
         self.n_episodes = 0
-        self.episodic_reward = 0
-        self.episodic_force = 0
-        self.episodic_torque = 0
         self.ep_n_steps = 0
         self.num_timesteps = start_timestep
         self.step_env = {}  # Values of the env at the current step
+
+        self.ep_reward_list = []  # Total reward of each ep
+        self.force_norm_avg_list = []  # Avg force norm of each ep
+        self.force_norm_rms_list = []  # Avg force norm of each ep
+        self.force_norm_max_list = []  # Avg force norm of each ep
+
+        self.torque_norm_avg_list = []  # Avg torque norm of each ep
+        self.torque_norm_rms_list = []  # Avg torque norm of each ep
+        self.torque_norm_max_list = []  # Avg torque norm of each ep
 
         self.episode_log = {
             'step': [],
@@ -366,7 +372,28 @@ class NeptuneTestCallback:
         }
 
     def _on_test_end(self) -> None:
-        ...
+        # Compute the mean of the evaluation values
+        force_norm_avg = np.mean(self.force_norm_avg_list)
+        force_norm_rms = np.mean(self.force_norm_rms_list)
+        force_norm_max = np.mean(self.force_norm_max_list)
+        torque_norm_avg = np.mean(self.torque_norm_avg_list)
+        torque_norm_rms = np.mean(self.torque_norm_rms_list)
+        torque_norm_max = np.mean(self.torque_norm_max_list)
+
+        eval_values_dict = {
+            'reward_avg': np.mean(self.ep_reward_list),
+            'force_norm_avg': force_norm_avg,
+            'force_norm_rms': force_norm_rms,
+            'force_norm_max': force_norm_max,
+            'torque_norm_avg': torque_norm_avg,
+            'torque_norm_rms': torque_norm_rms,
+            'torque_norm_max': torque_norm_max,
+        }
+
+        eval_logger = self.neptune_run['eval']
+
+        for param, val in eval_values_dict.items():
+            eval_logger[param] = val
 
     def on_step(self, obs, reward, terminated, truncated, info, action, reset_info) -> bool:
         self.num_timesteps += 1
@@ -416,11 +443,6 @@ class NeptuneTestCallback:
         action = self.step_env.get('action', None)
         reward = self.step_env.get('reward', None)
 
-        force_norm = np.linalg.norm(plug_force)
-        torque_norm = np.linalg.norm(plug_torque)
-        self.episodic_reward += reward
-        self.episodic_force += force_norm
-        self.episodic_torque += torque_norm
         self.ep_n_steps += self.env_log_freq
 
         log_dict = {
@@ -450,6 +472,11 @@ class NeptuneTestCallback:
         plug_torque = np.vstack(self.episode_log['plug_torque'])
         insertion_depth = np.vstack(self.episode_log['insertion_depth'])
 
+        plug_force_norm = np.linalg.norm(plug_force, axis=1)
+        plug_torque_norm = np.linalg.norm(plug_torque, axis=1)
+
+        # np.linalg.norm(plug_force)
+
         log_dict = {
             'step': self.episode_log['step'],
             'j2_pos': obs[:, 0],
@@ -470,9 +497,11 @@ class NeptuneTestCallback:
             'j2_act': action[:, 0],
             'j6_act': action[:, 1],
             'reward': reward[:, 0],
+            'plug_force_norm': plug_force_norm,
             'plug_force_x': plug_force[:, 0],
             'plug_force_y': plug_force[:, 1],
             'plug_force_z': plug_force[:, 2],
+            'plug_torque_norm': plug_torque_norm,
             'plug_torque_x': plug_torque[:, 0],
             'plug_torque_y': plug_torque[:, 1],
             'plug_torque_z': plug_torque[:, 2],
@@ -491,14 +520,39 @@ class NeptuneTestCallback:
         # ep_logger['insertion_misalignment'] = self.step_env['reset_info']['insertion_misalignment']
 
         # ----- Episode summary -----
-        last_insert_depth = insertion_depth[-1]
-        ep_avg_force = self.episodic_force / self.ep_n_steps
-        ep_avg_torque = self.episodic_torque / self.ep_n_steps
+        ep_reward = np.sum(reward)
 
+        last_insert_depth = insertion_depth[-1]
+        ep_avg_force = np.mean(plug_force_norm)
+        ep_avg_torque = np.mean(plug_torque_norm)
+
+        ep_max_force = np.max(plug_force_norm)
+        ep_max_torque = np.max(plug_torque_norm)
+
+        ep_rms_force = np.sqrt(np.mean(plug_force_norm**2))
+        ep_rms_torque = np.sqrt(np.mean(plug_torque_norm**2))
+
+        # Add the evaluation values to the lists
+        self.ep_reward_list.append(ep_reward)
+
+        self.force_norm_avg_list.append(ep_avg_force)
+        self.torque_norm_avg_list.append(ep_avg_torque)
+
+        self.force_norm_max_list.append(ep_max_force)
+        self.torque_norm_max_list.append(ep_max_torque)
+
+        self.force_norm_rms_list.append(ep_rms_force)
+        self.torque_norm_rms_list.append(ep_rms_torque)
+
+        # Send the evaluation values to neptune
         ep_data = {
-            'ep_reward': self.episodic_reward,
+            'ep_reward': ep_reward,
             'ep_avg_force': ep_avg_force,
             'ep_avg_torque': ep_avg_torque,
+            'ep_max_force': ep_max_force,
+            'ep_max_torque': ep_max_torque,
+            'ep_rms_force': ep_rms_force,
+            'ep_rms_torque': ep_rms_torque,
             'ep_end_depth_x': last_insert_depth[0],
             'ep_end_depth_z': last_insert_depth[1],
             'ep_end_depth_rot': last_insert_depth[2],
@@ -522,6 +576,3 @@ class NeptuneTestCallback:
             'insertion_depth': [],
         }
         self.ep_n_steps = 0
-        self.episodic_reward = 0
-        self.episodic_force = 0
-        self.episodic_torque = 0

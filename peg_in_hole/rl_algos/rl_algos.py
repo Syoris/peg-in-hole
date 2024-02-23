@@ -45,43 +45,52 @@ def get_model(env, task_cfg, model_path=None, model_type=None):
 
 
 def initialize_ddpg_model(env, task_cfg, model_path=None):
-    ddpg_params = task_cfg.rl.hparams.ddpg
-    lr = ddpg_params.lr
-    tau = ddpg_params.tau  # Used to update target networks
-    gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
-    buffer_capacity = ddpg_params.buffer.capacity
-    batch_size = ddpg_params.buffer.batch_size
-    learning_start = 1
+    if model_path is not None:
+        if 'test' in model_path.as_posix():
+            logger.info(f'Loading DDPG model from {model_path.as_posix()}')
+            model = DDPG.load(model_path.as_posix(), env)
 
-    noise_std_dev = ddpg_params.noise_std_dev
+        else:
+            raise ValueError('DDPG model not supported for training yet')
 
-    # action_noise = OrnsteinUhlenbeckActionNoise(
-    #     mean=np.zeros(env.action_space.shape[-1]),
-    #     sigma=noise_std_dev * np.ones(env.action_space.shape[-1]),
-    #     dt=1e-2,
-    # )
+    else:
+        ddpg_params = task_cfg.rl.hparams.ddpg
+        lr = ddpg_params.lr
+        tau = ddpg_params.tau  # Used to update target networks
+        gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
+        buffer_capacity = ddpg_params.buffer.capacity
+        batch_size = ddpg_params.buffer.batch_size
+        learning_start = 1
 
-    # action_noise = OrnsteinUhlenbeckActionNoise(
-    #     mean=np.zeros(env.action_space.shape[-1]),
-    #     sigma=0.1 * np.ones(env.action_space.shape[-1]),
-    # )
+        noise_std_dev = ddpg_params.noise_std_dev
 
-    action_noise = NormalActionNoise(
-        mean=np.zeros(env.action_space.shape[-1]), sigma=0.5 * np.ones(env.action_space.shape[-1])
-    )
+        # action_noise = OrnsteinUhlenbeckActionNoise(
+        #     mean=np.zeros(env.action_space.shape[-1]),
+        #     sigma=noise_std_dev * np.ones(env.action_space.shape[-1]),
+        #     dt=1e-2,
+        # )
 
-    model = DDPG(
-        'MlpPolicy',
-        env,
-        action_noise=action_noise,
-        verbose=1,
-        # learning_rate=lr,
-        # tau=tau,
-        # gamma=gamma,
-        # buffer_size=buffer_capacity,
-        # batch_size=batch_size,
-        # learning_starts=learning_start,
-    )
+        # action_noise = OrnsteinUhlenbeckActionNoise(
+        #     mean=np.zeros(env.action_space.shape[-1]),
+        #     sigma=0.1 * np.ones(env.action_space.shape[-1]),
+        # )
+
+        action_noise = NormalActionNoise(
+            mean=np.zeros(env.action_space.shape[-1]), sigma=0.5 * np.ones(env.action_space.shape[-1])
+        )
+
+        model = DDPG(
+            'MlpPolicy',
+            env,
+            action_noise=action_noise,
+            verbose=1,
+            # learning_rate=lr,
+            # tau=tau,
+            # gamma=gamma,
+            # buffer_size=buffer_capacity,
+            # batch_size=batch_size,
+            # learning_starts=learning_start,
+        )
 
     model_params = {
         'algo': 'DDPG',
@@ -111,32 +120,41 @@ def initialize_ppo_model(env, task_cfg, model_path=None):
 
 
 def initialize_td3_model(env, task_cfg, model_path=None):
-    td3_params = task_cfg.rl.hparams.td3
-    # lr = ddpg_params.lr
-    # tau = ddpg_params.tau  # Used to update target networks
-    # gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
-    # buffer_capacity = ddpg_params.buffer.capacity
-    # batch_size = ddpg_params.buffer.batch_size
-    # learning_start = 1
+    if model_path is not None:
+        if 'test' in model_path.as_posix():
+            logger.info(f'Loading TD3 model from {model_path.as_posix()}')
+            model = TD3.load(model_path.as_posix(), env)
 
-    # noise_std_dev = ddpg_params.noise_std_dev
+        else:
+            raise ValueError('TD3 model not supported for training yet')  # TODO: Implement training for TD3
 
-    action_noise = NormalActionNoise(
-        mean=np.zeros(env.action_space.shape[-1]), sigma=0.1 * np.ones(env.action_space.shape[-1])
-    )
+    else:
+        td3_params = task_cfg.rl.hparams.td3
+        # lr = ddpg_params.lr
+        # tau = ddpg_params.tau  # Used to update target networks
+        # gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
+        # buffer_capacity = ddpg_params.buffer.capacity
+        # batch_size = ddpg_params.buffer.batch_size
+        # learning_start = 1
 
-    model = TD3(
-        'MlpPolicy',
-        env,
-        action_noise=action_noise,
-        verbose=1,
-        # learning_rate=lr,
-        # tau=tau,
-        # gamma=gamma,
-        # buffer_size=buffer_capacity,
-        # batch_size=batch_size,
-        # learning_starts=learning_start,
-    )
+        # noise_std_dev = ddpg_params.noise_std_dev
+
+        action_noise = NormalActionNoise(
+            mean=np.zeros(env.action_space.shape[-1]), sigma=0.1 * np.ones(env.action_space.shape[-1])
+        )
+
+        model = TD3(
+            'MlpPolicy',
+            env,
+            action_noise=action_noise,
+            verbose=1,
+            # learning_rate=lr,
+            # tau=tau,
+            # gamma=gamma,
+            # buffer_size=buffer_capacity,
+            # batch_size=batch_size,
+            # learning_starts=learning_start,
+        )
 
     model_params = {
         'algo': 'TD3',
@@ -175,7 +193,7 @@ def download_model_from_run(model_path: Path, run_name: str, cfg: DictConfig) ->
 
     model_path = model_path / f'rl_model_{model_ts}_steps.zip'
 
-    logger.info(f'Downloading model for {model_run}. Saving to {model_path.as_posix()}')
+    logger.info(f'Downloading model for {model_run["sys/id"].fetch()}. Saving to {model_path.as_posix()}')
     model_run[f'model_checkpoints/{model_ts}/model'].download(destination=model_path.as_posix())
 
     model_type = model_run['cfg/task/rl/algo'].fetch()

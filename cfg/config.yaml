@@ -2,7 +2,7 @@ defaults:
   - task: RPL_Insert_3DoF
   - _self_
 
-run: train  # train, test or both (not implemented)
+run: test  # train, test or both (not implemented)
 
 train:
   render: False
@@ -11,7 +11,7 @@ train:
 test:
   n_epochs: 5
   render: True
-  model_name: # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps, None for IK
+  model_name: PH-158 # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps, None for IK
   log_freq: 1  # Interval to log the environment (in timesteps)
 
 neptune:

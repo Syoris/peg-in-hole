@@ -82,11 +82,11 @@ def test(cfg: DictConfig):
     n_epochs = cfg.test.n_epochs
     n_steps = n_epochs * 250
 
-    for i in range(n_steps):
+    for _ in range(n_steps):
         step_start_time = time.time()
 
         if model is not None:
-            action, _states = model.predict(obs)
+            action, _states = model.predict(obs, deterministic=True)
             # action = env.action_space.sample()  # Random action
         else:
             action = np.array([0.0, 0.0], dtype=np.float32)  # IK Only
@@ -101,3 +101,8 @@ def test(cfg: DictConfig):
         # Wait for time period
         while (time.time() - step_start_time) < dt and render_mode is not None:
             time.sleep(0.001)
+
+    neptune_test_callback._on_test_end()
+
+    if run is not None:
+        run.stop()
