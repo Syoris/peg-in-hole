@@ -181,11 +181,12 @@ class RPL_Insert_3DoF(gym.Env):
         self.next_j_vel = np.zeros(3)  # Next target vel
         self.prev_j_vel = np.zeros(3)  # Prev target vel
 
-        act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
-        act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
+        self.act_low_bound = np.array([self.robot_cfg.actuators.j2.torque_min, self.robot_cfg.actuators.j6.torque_min])
+        self.act_high_bound = np.array([self.robot_cfg.actuators.j2.torque_max, self.robot_cfg.actuators.j6.torque_max])
+
         self.action_space = spaces.Box(
-            low=act_low_bound,
-            high=act_high_bound,
+            low=np.array([-1, -1]),
+            high=np.array([1, 1]),
             dtype=np.float32,
         )
 
@@ -305,9 +306,13 @@ class RPL_Insert_3DoF(gym.Env):
         self.prev_j_vel = self.next_j_vel
         self.next_j_vel = self._get_ik_vels(self.insertz, self.step_count, step_types=self.insertion_steps)
 
-        j2_vel = self.next_j_vel[0] - self.action_coeff * action[0]
-        j4_vel = self.next_j_vel[1] + self.action_coeff * action[1] - self.action_coeff * action[0]
-        j6_vel = self.next_j_vel[2] + self.action_coeff * action[1]
+        # Scale actions
+        act_j2 = self.action_coeff * self.action[0] * self.act_high_bound[0]
+        act_j6 = self.action_coeff * self.action[1] * self.act_high_bound[1]
+
+        j2_vel = self.next_j_vel[0] - act_j2
+        j4_vel = self.next_j_vel[1] + act_j6 - act_j2
+        j6_vel = self.next_j_vel[2] + act_j6
 
         # Apply actions
         self.command = np.array([j2_vel, j4_vel, j6_vel])
@@ -445,11 +450,15 @@ class RPL_Insert_3DoF(gym.Env):
         Returns:
             dict: Info about the robot
         """
+
+        insert_depth = self._get_insertion_depth()
+        insert_depth[2] = np.rad2deg(insert_depth[2])
+
         info = {
             'command': self.command,
             'plug_force': self._get_plug_force(),
             'plug_torque': self._get_plug_torque(),
-            'insertion_depth': self._get_insertion_depth(),
+            'insertion_depth': insert_depth,
         }
 
         return info

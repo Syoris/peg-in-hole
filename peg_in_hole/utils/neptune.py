@@ -51,6 +51,7 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = 
     return run
 
 
+# TODO: Merge NeptuneTrainCallback and NeptuneTestCallback
 class NeptuneTrainCallback(BaseCallback):
     def __init__(
         self,
@@ -253,6 +254,11 @@ class NeptuneTrainCallback(BaseCallback):
             for param, val in log_dict.items():
                 ep_logger[param].extend(list(val))
 
+            # Reset infos
+            reset_infos = self.training_env.reset_infos[0]
+            self.neptune_run[f'episode/misaligment/{ep_id}'] = reset_infos['insertion_misalignment']
+            self.neptune_run['data/misaligment'].append(reset_infos['insertion_misalignment'])
+
         # ----- Episode summary -----
         last_insert_depth = insertion_depth[-1]
         ep_avg_force = self.episodic_force / self.ep_n_steps
@@ -270,6 +276,8 @@ class NeptuneTrainCallback(BaseCallback):
         ep_logger = self.neptune_run['data']
         for param, val in ep_data.items():
             ep_logger[param].append(value=val, step=self.num_timesteps)
+
+        ep_logger['timestep'] = self.num_timesteps
 
         # Mean reward of the last 100 episodes
         self.rewards_list.append(self.episodic_reward)
@@ -387,6 +395,16 @@ class NeptuneTestCallback:
         return True
 
     def record_env_step(self):
+        """
+        Records the environment step by storing relevant information such as observations, actions, rewards,
+        forces, torques, and insertion depth in the episode log.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
         # Observations
         obs = self.step_env.get('obs', None)
         infos = self.step_env.get('infos', None)
@@ -489,6 +507,8 @@ class NeptuneTestCallback:
         ep_logger = self.neptune_run['data']
         for param, val in ep_data.items():
             ep_logger[param].append(value=val, step=self.num_timesteps)
+
+        ep_logger['timestep'] = self.num_timesteps
 
         # Reset episodic data
         self.episode_log = {
