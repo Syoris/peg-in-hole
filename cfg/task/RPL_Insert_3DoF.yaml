@@ -24,10 +24,11 @@ rl:
       tau: 0.005  # Used to update target networks  Default 0.005
       noise_std_dev: 0.1  # Standard dev of OUActionNoise  Default 0.1
       gamma: 0.99  # Discount factor for future rewards Default 0.99
-      buffer_size: 1000000  # Default 1000000
-      batch_size: 100  # Default 256
+      buffer_size: 200000  # Default 1000000
+      batch_size: 256  # Default 256
 
   reward:
+    reward_function: 'physical'  # physical, 
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
     min_height_threshold: 0.005  # NOT CURRENTLY USED
     reward_weight: 0.04

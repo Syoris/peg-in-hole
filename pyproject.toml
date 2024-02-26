@@ -20,6 +20,7 @@ python-json-logger = "^2.0.7"
 hydra-core = "^1.3.2"
 neptune = "^1.8.6"
 pyvortex = {path = "../pyvortex", develop = true}
+rl_zoo3 = {path = "../rl-baselines3-zoo", develop = true}
 stable-baselines3 = {extras = ["extra"], version = "^2.2.1"}
 
 

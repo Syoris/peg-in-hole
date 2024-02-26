@@ -70,9 +70,18 @@ class RPL_Insert_3DoF(gym.Env):
         self.action_coeff = self.task_cfg.rl.hparams.action_coeff
 
         # Reward
+        reward_functions = {
+            'physical': self._reward_function_physical,
+            'distance': self._reward_function_distance,
+        }
         self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
         self.min_height_threshold = self.task_cfg.rl.reward.min_height_threshold
         self.reward_weight = self.task_cfg.rl.reward.reward_weight
+        self.reward_function_name = self.task_cfg.rl.reward.reward_function
+        assert (
+            self.reward_function_name in reward_functions.keys()
+        ), f'Invalid reward function: {self.reward_function_name}'
+        self.reward_func = reward_functions[self.reward_function_name]
 
         """ Sim Hyperparameters """
         self._init_env_params()
@@ -321,10 +330,10 @@ class RPL_Insert_3DoF(gym.Env):
         self.update_sim()
 
         # Observations
-        self.obs = self._get_robot_state()
+        # self.obs = self._get_robot_state()  # Done in update_sim
 
         # Reward
-        reward = self._get_reward()
+        reward = self.reward_func()
 
         # Done flag
         self.step_count += 1
@@ -516,22 +525,6 @@ class RPL_Insert_3DoF(gym.Env):
 
     """ Utilities """
 
-    def _get_reward(self):
-        j2_id = self.next_j_vel[0]
-        j4_id = self.next_j_vel[1]
-        j6_id = self.next_j_vel[2]
-
-        #  reward = self.reward_weight*(-abs((shv_id-shv)*self.shoulder_torque.value)-abs((elv_id-elv)*self.elbow_torque.value)-abs((wrv_id-wrv)*self.wrist_torque.value))
-        joint_vels = self.obs[3:6]
-        joint_torques = self.obs[0:3]
-
-        reward = self.reward_weight * (
-            -abs((j2_id - joint_vels[0]) * joint_torques[0])
-            - abs((j4_id - joint_vels[1]) * joint_torques[1])
-            - abs((j6_id - joint_vels[2]) * joint_torques[2])
-        )
-        return reward
-
     def _get_ik_vels(self, down_speed, cur_count, step_types):
         th_current = self._readJpos()
         current_pos = self._read_tips_pos_fk(th_current)
@@ -616,3 +609,23 @@ class RPL_Insert_3DoF(gym.Env):
         th_current = self._readJpos()
         x, z, rot = self._read_tips_pos_fk(th_current)
         return np.array([x, z, rot])
+
+    """ Reward Functions """
+
+    def _reward_function_physical(self):
+        joint_vels = self.obs[3:6]
+        joint_id_vels = self.obs[6:9]
+        joint_torques = self.obs[9:12]  # self.obs[0:3]
+
+        reward = self.reward_weight * (
+            -abs((joint_id_vels[0] - joint_vels[0]) * joint_torques[0])
+            - abs((joint_id_vels[1] - joint_vels[1]) * joint_torques[1])
+            - abs((joint_id_vels[2] - joint_vels[2]) * joint_torques[2])
+        )
+        return reward
+
+    def _reward_function_distance(self):
+        k_goal = np.array([0.529, -0.007, 0.0156])
+        k_peg = self.obs[0:3]
+
+        ...
