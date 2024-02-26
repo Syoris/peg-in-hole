@@ -128,20 +128,21 @@ def initialize_td3_model(env, task_cfg, model_path=None):
         else:
             raise ValueError('TD3 model not supported for training yet')  # TODO: Implement training for TD3
 
+        hp_params = {}  # TODO: get from loaded model
+        print('HP PARAMS NOT LOADED FROM MODEL')
+
     else:
-        td3_params = task_cfg.rl.hparams.td3
-        # lr = ddpg_params.lr
-        # tau = ddpg_params.tau  # Used to update target networks
-        # gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
-        # buffer_capacity = ddpg_params.buffer.capacity
-        # batch_size = ddpg_params.buffer.batch_size
-        # learning_start = 1
+        algo_params = task_cfg.rl.hparams.td3
 
-        # noise_std_dev = ddpg_params.noise_std_dev
+        lr = algo_params.lr
+        tau = algo_params.tau  # Used to update target networks
+        gamma = algo_params.gamma  # Discount factor for future rewards
+        buffer_size = algo_params.buffer_size
+        batch_size = algo_params.batch_size
+        noise_std_dev = algo_params.noise_std_dev
 
-        action_noise = NormalActionNoise(
-            mean=np.zeros(env.action_space.shape[-1]), sigma=0.1 * np.ones(env.action_space.shape[-1])
-        )
+        n_actions = env.action_space.shape[-1]
+        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=noise_std_dev * np.ones(n_actions))
 
         model = TD3(
             'MlpPolicy',
@@ -151,14 +152,23 @@ def initialize_td3_model(env, task_cfg, model_path=None):
             # learning_rate=lr,
             # tau=tau,
             # gamma=gamma,
-            # buffer_size=buffer_capacity,
+            # buffer_size=buffer_size,
             # batch_size=batch_size,
-            # learning_starts=learning_start,
         )
 
+    hp_params = {
+        'lr': model.learning_rate,
+        'tau': model.tau,
+        'gamma': model.gamma,
+        'buffer_size': model.buffer_size,
+        'batch_size': model.batch_size,
+        'noise_std_dev': model.action_noise._sigma[0],
+    }
     model_params = {
         'algo': 'TD3',
     }
+
+    model_params.update(hp_params)
 
     return model, model_params
 

@@ -2,7 +2,7 @@ defaults:
   - task: RPL_Insert_3DoF
   - _self_
 
-run: test  # train, test or both (not implemented)
+run: train  # train, test or both (not implemented)
 
 train:
   render: False

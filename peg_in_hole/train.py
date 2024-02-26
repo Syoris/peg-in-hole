@@ -100,7 +100,7 @@ def train(cfg: DictConfig):
 
     """ Training """
     model.learn(
-        total_timesteps=n_timesteps, log_interval=10, progress_bar=True, callback=callbacks, reset_num_timesteps=False
+        total_timesteps=n_timesteps, log_interval=500, progress_bar=True, callback=callbacks, reset_num_timesteps=False
     )
 
     if run is not None:

@@ -1,9 +1,9 @@
 name: 'Insert_Kinova3DoF'
 
 rl:
-  algo: TD3 # DDPG, PPO
+  algo: TD3 # DDPG, PPO, TD3
   hparams:
-    n_timesteps: 500_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
+    n_timesteps: 250_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
     action_coeff: 0.01  # coefficient the action will be multiplied by
 
     ddpg: # DDPG specific hyperparameters
@@ -20,7 +20,12 @@ rl:
       ...
 
     td3: # TD3 specific hyperparameters
-      ...
+      lr: 0.001  # Default 0.001
+      tau: 0.005  # Used to update target networks  Default 0.005
+      noise_std_dev: 0.2  # Standard dev of OUActionNoise  Default 0.1
+      gamma: 0.99  # Discount factor for future rewards Default 0.99
+      buffer_size: 1000000  # Default 1000000
+      batch_size: 256  # Default 256
 
   reward:
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
@@ -36,6 +41,6 @@ env:
   t_insertion: 2.5
   xpos_hole: 0.529  # x position of the hole
   ypos_hole: -0.007  # y position of the hole
-  misalignment_range: [-0.0, 0.0]  # min/max misalignment of joint 7, [deg]
+  misalignment_range: [-2.0, 2.0]  # min/max misalignment of joint 7, [deg]
   pre_insertz: 0.44  # z distance to be covered in pre-insertion phase
   insertz: 0.07  # z distance to be covered in insertion phase, though may change with actions  
