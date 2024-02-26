@@ -128,9 +128,6 @@ def initialize_td3_model(env, task_cfg, model_path=None):
         else:
             raise ValueError('TD3 model not supported for training yet')  # TODO: Implement training for TD3
 
-        hp_params = {}  # TODO: get from loaded model
-        print('HP PARAMS NOT LOADED FROM MODEL')
-
     else:
         algo_params = task_cfg.rl.hparams.td3
 
@@ -149,11 +146,11 @@ def initialize_td3_model(env, task_cfg, model_path=None):
             env,
             action_noise=action_noise,
             verbose=1,
-            # learning_rate=lr,
-            # tau=tau,
-            # gamma=gamma,
-            # buffer_size=buffer_size,
-            # batch_size=batch_size,
+            learning_rate=lr,
+            tau=tau,
+            gamma=gamma,
+            buffer_size=buffer_size,
+            batch_size=batch_size,
         )
 
     hp_params = {

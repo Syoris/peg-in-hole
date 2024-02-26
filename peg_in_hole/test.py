@@ -30,7 +30,7 @@ def test(cfg: DictConfig):
     logger.info('##### Testing trained model #####')
     logger.info(f'Task: {cfg.task.name}')
 
-    if cfg.neptune.use_neptune is not False:
+    if cfg.test.use_neptune is not False:
         run = init_neptune_run(cfg.train.run_name, neptune_cfg=cfg.neptune)
     else:
         run = None
@@ -102,7 +102,6 @@ def test(cfg: DictConfig):
         while (time.time() - step_start_time) < dt and render_mode is not None:
             time.sleep(0.001)
 
-    neptune_test_callback._on_test_end()
-
     if run is not None:
+        neptune_test_callback._on_test_end()
         run.stop()

@@ -35,7 +35,7 @@ def train(cfg: DictConfig):
     logger.info('##### Training #####')
     logger.info(f'Task: {cfg.task.name}')
 
-    if cfg.neptune.use_neptune is not False:
+    if cfg.train.use_neptune is not False:
         run = init_neptune_run(cfg.train.run_name, neptune_cfg=cfg.neptune)
     else:
         run = None
@@ -76,6 +76,7 @@ def train(cfg: DictConfig):
     total_timesteps_steps = task_cfg.rl.hparams.n_timesteps
     start_timestep = model.num_timesteps
     n_timesteps = total_timesteps_steps - start_timestep
+    logger.info(f'RL Algo parameters:\n{model_params}')
 
     """ Callbacks """
     save_freq = cfg.neptune.save_freq
