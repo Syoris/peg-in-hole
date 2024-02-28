@@ -28,7 +28,7 @@ rl:
       noise_type: 'normal'  # 'ou' or 'normal'
 
   reward:
-    reward_function: 'physical'  # physical, distance, distance_z
+    reward_function: 'distance_z'  # physical, distance, distance_z
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
     min_height_threshold: 0.005  # NOT CURRENTLY USED
     reward_weight: 0.04

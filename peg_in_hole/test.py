@@ -61,11 +61,12 @@ def test(cfg: DictConfig):
 
     model_params_for_run = None
     if cfg.test.model_id is not None and cfg.test.model_id != 'None':
-        model_path, model_type = download_model_from_run(model_path, str(cfg.test.model_id), cfg)
+        model_path, model_type, model_url = download_model_from_run(model_path, str(cfg.test.model_id), cfg)
 
         model, model_params = get_model(env, cfg.task, model_path, model_type=model_type)
         model_params_for_run = stringify_unsupported(model_params)
         model_params_for_run['model'] = f'PH-{cfg.test.model_id}'
+        model_params_for_run['model_url'] = model_url
 
     else:
         model_params_for_run = {'algo': 'IK', 'model': 'None'}

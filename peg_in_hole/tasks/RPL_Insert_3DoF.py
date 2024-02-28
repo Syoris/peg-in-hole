@@ -658,7 +658,7 @@ class RPL_Insert_3DoF(gym.Env):
 
         joints_pos = self.obs[0:3]
         k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
-        k_peg_dz = k_peg_z - k_peg_z_start
+        k_peg_dz = k_peg_z_start - k_peg_z
 
         reward = -(self.insertz - k_peg_dz) / self.insertz
 

@@ -203,9 +203,11 @@ def download_model_from_run(model_path: Path, run_name: str, cfg: DictConfig) ->
 
     model_type = model_run['cfg/task/rl/algo'].fetch()
 
+    model_run_url = model_run.get_url()
+
     model_run.stop()
 
-    return model_path, model_type
+    return model_path, model_type, model_run_url
 
 
 RL_ALGOS = {

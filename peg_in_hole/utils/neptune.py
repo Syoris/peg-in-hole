@@ -350,6 +350,7 @@ class NeptuneCallback(ABC):
             'ep_rms_force': ep_rms_force,
             'ep_rms_torque': ep_rms_torque,
             'ep_end_depth_x': end_insert_depth[0],
+            'depth_z_target': 0.0156,
             'ep_end_depth_z': end_insert_depth[1],
             'ep_end_depth_rot': end_insert_depth[2],
             'mean_reward': mean_reward,
