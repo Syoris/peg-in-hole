@@ -1,7 +1,7 @@
 name: 'Insert_Kinova3DoF'
 
 rl:
-  algo: PPO # DDPG, PPO, TD3
+  algo: DDPG # DDPG, PPO, TD3
   hparams:
     n_timesteps: 500_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
     action_coeff: 0.01  # coefficient the action will be multiplied by
@@ -28,7 +28,7 @@ rl:
       noise_type: 'normal'  # 'ou' or 'normal'
 
   reward:
-    reward_function: 'distance_z'  # physical, distance, distance_z
+    reward_function: 'physical'  # physical, distance, distance_z
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
     min_height_threshold: 0.005  # NOT CURRENTLY USED
     reward_weight: 0.04
@@ -45,3 +45,4 @@ env:
   misalignment_range: [-2.0, 2.0]  # min/max misalignment of joint 7, [deg]
   pre_insertz: 0.44  # z distance to be covered in pre-insertion phase
   insertz: 0.07  # z distance to be covered in insertion phase, though may change with actions  
+  seed: 0  # Seed for the environment

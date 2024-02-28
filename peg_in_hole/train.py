@@ -79,7 +79,8 @@ def train(cfg: DictConfig):
     logger.info(f'RL Algo parameters:\n{model_params}')
 
     # Env parameters
-    ...
+    if run is not None:
+        run['env_params'] = stringify_unsupported(env.unwrapped.get_params())
 
     """ Callbacks """
     save_freq = cfg.neptune.save_freq

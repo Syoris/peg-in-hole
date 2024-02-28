@@ -22,6 +22,8 @@ from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckA
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 
+# from tqdm import tqdm
+from tqdm.rich import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,7 @@ def test(cfg: DictConfig):
         run = None
 
     """ Configs """
+    # TODO: Load config from model if provided. Is it necessary?
     if run is not None:
         run['cfg'] = stringify_unsupported(cfg)
         run['sys/tags'].add('test')
@@ -48,19 +51,24 @@ def test(cfg: DictConfig):
     env = RPL_Insert_3DoF(render_mode=render_mode, task_cfg=cfg.task)
     # check_env(env)
 
+    # Env parameters
+    if run is not None:
+        run['env_params'] = stringify_unsupported(env.unwrapped.get_params())
+
     """ Model """
     model_path = log_dir
     model = None
 
     model_params_for_run = None
-    if cfg.test.model_name is not None and cfg.test.model_name != 'None':
-        model_path, model_type = download_model_from_run(model_path, cfg.test.model_name, cfg)
+    if cfg.test.model_id is not None and cfg.test.model_id != 'None':
+        model_path, model_type = download_model_from_run(model_path, str(cfg.test.model_id), cfg)
 
         model, model_params = get_model(env, cfg.task, model_path, model_type=model_type)
         model_params_for_run = stringify_unsupported(model_params)
+        model_params_for_run['model'] = f'PH-{cfg.test.model_id}'
 
     else:
-        model_params_for_run = {'algo': 'IK'}
+        model_params_for_run = {'algo': 'IK', 'model': 'None'}
 
     if run is not None:
         run['model_params'] = model_params_for_run
@@ -73,7 +81,7 @@ def test(cfg: DictConfig):
         )
 
     """ Rendering speed """
-    render_speed = 0.75  # 1 is normal speed, 0.5 is half speed, 2 is double speed
+    render_speed = cfg.test.render_speed
     ts = cfg.task.env.h
     dt = ts / render_speed
 
@@ -82,7 +90,7 @@ def test(cfg: DictConfig):
     n_epochs = cfg.test.n_epochs
     n_steps = n_epochs * 250
 
-    for _ in range(n_steps):
+    for _ in tqdm(range(n_steps)):
         step_start_time = time.time()
 
         if model is not None:
@@ -93,7 +101,7 @@ def test(cfg: DictConfig):
 
         obs, reward, terminated, truncated, info = env.step(action)
         if run is not None:
-            neptune_test_callback.on_step(obs, reward, terminated, truncated, info, action, reset_info)
+            neptune_test_callback._on_step(obs, reward, terminated, truncated, info, action, reset_info)
 
         if terminated:
             obs, reset_info = env.reset()

@@ -179,12 +179,13 @@ def download_model_from_run(model_path: Path, run_name: str, cfg: DictConfig) ->
     Returns:
         Path: Path to the downloaded model
     """
-    if re.match(r'^PH-\d+$', run_name) is not None:
-        run_id = run_name
+    if re.match(r'^\d+$', run_name) is not None:
+        run_id = f'PH-{run_name}'
         model_ts = None
 
-    elif re.match(r'^PH-\d+_\d+$', run_name) is not None:
+    elif re.match(r'^\d+_\d+$', run_name) is not None:
         run_id, model_ts = run_name.split('_')
+        run_id = f'PH-{run_id}'
 
     else:
         raise ValueError(f'Invalid run name: {run_name}')

@@ -2,7 +2,7 @@ defaults:
   - task: RPL_Insert_3DoF
   - _self_
 
-run: train  # train, test or both (not implemented)
+run: test  # train, test or both (not implemented)
 
 train:
   render: False
@@ -10,11 +10,12 @@ train:
   use_neptune: True
 
 test:
-  n_epochs: 5
+  n_epochs: 10
   render: True
-  model_name:  # Name of the model to test. 'PH-90' loads the latest model, 'PH_10000' loads the model at 10,000 steps, None for IK
+  model_id: 203  # Name of the model to test. '90' loads the latest model, '90_10000' loads the model at 10,000 steps, None for IK
   log_freq: 1  # Interval to log the environment (in timesteps)
   use_neptune: False
+  render_speed:  0.75  # 1 is normal speed, 0.5 is half speed, 2 is double speed
 
 neptune:
   project_name: MyResearch/Applied-Dynamics---Peg-in-hole

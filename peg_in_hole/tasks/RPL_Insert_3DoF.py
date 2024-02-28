@@ -61,6 +61,10 @@ class RPL_Insert_3DoF(gym.Env):
 
         self.sim_time = 0.0
         self.step_count = 0  # Step counter
+        self.env_seed = task_cfg.env.seed
+        # Set the seed for the random number generator
+        if self.env_seed is not None:
+            np.random.seed(self.env_seed)
 
         self._init_obs_space()
         self._init_action_space()
@@ -612,6 +616,14 @@ class RPL_Insert_3DoF(gym.Env):
         th_current = self._readJpos()
         x, z, rot = self._read_tips_pos_fk(th_current)
         return np.array([x, z, rot])
+
+    def get_params(self):
+        env_params = {
+            'task_name': 'RPL_Insert_3DoF',
+            'reward_function': self.reward_function_name,
+        }
+
+        return env_params
 
     """ Reward Functions """
 
