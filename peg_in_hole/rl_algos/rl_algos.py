@@ -54,46 +54,46 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
             raise ValueError('DDPG model not supported for training yet')
 
     else:
-        ddpg_params = task_cfg.rl.hparams.ddpg
-        lr = ddpg_params.lr
-        tau = ddpg_params.tau  # Used to update target networks
-        gamma = ddpg_params.buffer.gamma  # Discount factor for future rewards
-        buffer_capacity = ddpg_params.buffer.capacity
-        batch_size = ddpg_params.buffer.batch_size
-        learning_start = 1
+        algo_params = task_cfg.rl.hparams.td3
 
-        noise_std_dev = ddpg_params.noise_std_dev
+        lr = algo_params.lr
+        tau = algo_params.tau  # Used to update target networks
+        gamma = algo_params.gamma  # Discount factor for future rewards
+        buffer_size = algo_params.buffer_size
+        batch_size = algo_params.batch_size
+        noise_std_dev = algo_params.noise_std_dev
 
-        # action_noise = OrnsteinUhlenbeckActionNoise(
-        #     mean=np.zeros(env.action_space.shape[-1]),
-        #     sigma=noise_std_dev * np.ones(env.action_space.shape[-1]),
-        #     dt=1e-2,
-        # )
-
-        # action_noise = OrnsteinUhlenbeckActionNoise(
-        #     mean=np.zeros(env.action_space.shape[-1]),
-        #     sigma=0.1 * np.ones(env.action_space.shape[-1]),
-        # )
-
-        action_noise = NormalActionNoise(
-            mean=np.zeros(env.action_space.shape[-1]), sigma=0.5 * np.ones(env.action_space.shape[-1])
-        )
+        n_actions = env.action_space.shape[-1]
+        if algo_params.noise_type == 'ou':
+            action_noise = OrnsteinUhlenbeckActionNoise(
+                mean=np.zeros(n_actions),
+                sigma=noise_std_dev * np.ones(n_actions),
+            )
+        elif algo_params.noise_type == 'normal':
+            action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=noise_std_dev * np.ones(n_actions))
+        else:
+            raise ValueError(f'Noise type {algo_params.noise_type} not recognized')
 
         model = DDPG(
             'MlpPolicy',
             env,
             action_noise=action_noise,
             verbose=1,
-            # learning_rate=lr,
-            # tau=tau,
-            # gamma=gamma,
-            # buffer_size=buffer_capacity,
-            # batch_size=batch_size,
-            # learning_starts=learning_start,
+            learning_rate=lr,
+            tau=tau,
+            gamma=gamma,
+            buffer_size=buffer_size,
+            batch_size=batch_size,
         )
 
     model_params = {
         'algo': 'DDPG',
+        'lr': model.learning_rate,
+        'tau': model.tau,
+        'gamma': model.gamma,
+        'buffer_size': model.buffer_size,
+        'batch_size': model.batch_size,
+        'noise_std_dev': model.action_noise._sigma[0],
     }
 
     return model, model_params
@@ -102,14 +102,15 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
 def initialize_ppo_model(env, task_cfg, model_path=None):
     if model_path is not None:
         model = PPO.load(model_path.as_posix(), env)
+
     else:
         model = PPO('MlpPolicy', env, verbose=1)
 
     model_params = {
         'algo': 'PPO',
-        'bath_size': model.batch_size,
+        'lr': model.learning_rate,
+        'batch_size': model.batch_size,
         'gamma': model.gamma,
-        'learning_rate': model.learning_rate,
         'gae_lambda': model.gae_lambda,
         'seed': model.seed,
         'vf_coef': model.vf_coef,
@@ -153,7 +154,8 @@ def initialize_td3_model(env, task_cfg, model_path=None):
             batch_size=batch_size,
         )
 
-    hp_params = {
+    model_params = {
+        'algo': 'TD3',
         'lr': model.learning_rate,
         'tau': model.tau,
         'gamma': model.gamma,
@@ -161,11 +163,6 @@ def initialize_td3_model(env, task_cfg, model_path=None):
         'batch_size': model.batch_size,
         'noise_std_dev': model.action_noise._sigma[0],
     }
-    model_params = {
-        'algo': 'TD3',
-    }
-
-    model_params.update(hp_params)
 
     return model, model_params
 

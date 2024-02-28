@@ -78,6 +78,9 @@ def train(cfg: DictConfig):
     n_timesteps = total_timesteps_steps - start_timestep
     logger.info(f'RL Algo parameters:\n{model_params}')
 
+    # Env parameters
+    ...
+
     """ Callbacks """
     save_freq = cfg.neptune.save_freq
     env_log_freq = cfg.neptune.env_log_freq

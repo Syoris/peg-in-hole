@@ -64,24 +64,11 @@ class RPL_Insert_3DoF(gym.Env):
 
         self._init_obs_space()
         self._init_action_space()
+        self._init_reward()
 
         """ RL Hyperparameters """
         # Actions
         self.action_coeff = self.task_cfg.rl.hparams.action_coeff
-
-        # Reward
-        reward_functions = {
-            'physical': self._reward_function_physical,
-            'distance': self._reward_function_distance,
-        }
-        self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
-        self.min_height_threshold = self.task_cfg.rl.reward.min_height_threshold
-        self.reward_weight = self.task_cfg.rl.reward.reward_weight
-        self.reward_function_name = self.task_cfg.rl.reward.reward_function
-        assert (
-            self.reward_function_name in reward_functions.keys()
-        ), f'Invalid reward function: {self.reward_function_name}'
-        self.reward_func = reward_functions[self.reward_function_name]
 
         """ Sim Hyperparameters """
         self._init_env_params()
@@ -231,6 +218,22 @@ class RPL_Insert_3DoF(gym.Env):
         self.insertz = (
             self.task_cfg.env.insertz
         )  # z distance to be covered in insertion phase, though may change with actions
+
+    def _init_reward(self):
+        reward_functions = {
+            'physical': self._reward_function_physical,
+            'distance': self._reward_function_distance,
+            'distance_z': self._reward_function_distance_z,
+        }
+
+        self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
+        self.min_height_threshold = self.task_cfg.rl.reward.min_height_threshold
+        self.reward_weight = self.task_cfg.rl.reward.reward_weight
+        self.reward_function_name = self.task_cfg.rl.reward.reward_function
+        assert (
+            self.reward_function_name in reward_functions.keys()
+        ), f'Invalid reward function: {self.reward_function_name}'
+        self.reward_func = reward_functions[self.reward_function_name]
 
     """ Actions """
 
@@ -626,6 +629,25 @@ class RPL_Insert_3DoF(gym.Env):
 
     def _reward_function_distance(self):
         k_goal = np.array([0.529, -0.007, 0.0156])
-        k_peg = self.obs[0:3]
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
 
-        ...
+        dist = np.sum(np.square(k_goal - k_peg))
+
+        reward = -dist
+
+        return reward
+
+    def _reward_function_distance_z(self):
+        """Reward from Deep Reinforcement Learning for High Precision Assembly Tasks (@Inoue2017)"""
+        # k_goal = np.array([0.529, -0.007, 0.0156])
+        k_peg_z_start = 0.0856
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg_dz = k_peg_z - k_peg_z_start
+
+        reward = -(self.insertz - k_peg_dz) / self.insertz
+
+        return reward

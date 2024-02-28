@@ -7,7 +7,7 @@ run: train  # train, test or both (not implemented)
 train:
   render: False
   run_name: # PH-90  # If not empty, load and resume this run
-  use_neptune: False
+  use_neptune: True
 
 test:
   n_epochs: 5
