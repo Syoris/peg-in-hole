@@ -88,6 +88,7 @@ def test(cfg: DictConfig):
 
     """ Test the trained model """
     obs, reset_info = env.reset()
+    epoch_num = 0
     n_epochs = cfg.test.n_epochs
     n_steps = n_epochs * 250
 
@@ -104,8 +105,11 @@ def test(cfg: DictConfig):
         if run is not None:
             neptune_test_callback._on_step(obs, reward, terminated, truncated, info, action, reset_info)
 
-        if terminated:
+        if terminated or truncated:
             obs, reset_info = env.reset()
+            epoch_num += 1
+            if epoch_num >= n_epochs:
+                break
 
         # Wait for time period
         while (time.time() - step_start_time) < dt and render_mode is not None:

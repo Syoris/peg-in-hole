@@ -26,10 +26,11 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = 
     """
     # Create new neptune run
     if run_name is not None:
-        logger.info(f'Loading existing run: {run_name}')
+        run_id = f'PH-{run_name}'
+        logger.info(f'Loading existing run: {run_id}')
         mode = 'read-only' if read_only else 'async'
         run = neptune.init_run(
-            with_id=run_name,
+            with_id=run_id,
             project=neptune_cfg.project_name,
             api_token=neptune_cfg.api_token,
             mode=mode,
@@ -180,7 +181,7 @@ class NeptuneCallback(ABC):
             self.record_env_step()
 
         # If episode over, send data to neptune
-        episode_done = self.step_env.get('done', None)
+        episode_done = self.step_env.get('done', False) or self.step_env.get('truncated', False)
 
         if episode_done:
             self.send_ep_to_neptune()
@@ -230,6 +231,10 @@ class NeptuneCallback(ABC):
 
     def send_ep_to_neptune(self):
         """Send episode data to neptune."""
+        # If no data, exit (occurs if resets before log_env_freq steps)
+        if len(self.episode_log['step']) == 0:
+            return
+
         # ----- Episode observations -----
         if self.log_env:
             ep_id = self.n_episodes % self.neptune_n_episodes
@@ -298,7 +303,7 @@ class NeptuneCallback(ABC):
             self.neptune_run['data/misaligment'].append(reset_infos['insertion_misalignment'])
 
         # ----- Episode summary -----
-        ep_reward = np.sum(reward)  # Episodic reward
+        ep_reward = np.sum(reward * self.env_log_freq)  # Episodic reward
 
         end_insert_depth = insertion_depth[-1]
 
@@ -449,6 +454,8 @@ class NeptuneTrainCallback(NeptuneCallback, BaseCallback):
         verbose: int = 1,
         start_timestep: int = 0,
     ):
+        BaseCallback.__init__(self, verbose)
+
         NeptuneCallback.__init__(
             self,
             neptune_run,
@@ -464,7 +471,8 @@ class NeptuneTrainCallback(NeptuneCallback, BaseCallback):
             verbose=verbose,
             start_timestep=start_timestep,
         )
-        BaseCallback.__init__(self, verbose)
+
+        self._load_existing_run()
 
     def _init_callback(self) -> None:
         # Create folder if needed
@@ -506,6 +514,45 @@ class NeptuneTrainCallback(NeptuneCallback, BaseCallback):
         }
 
         return self.step_callback(step_env)
+
+    def _load_existing_run(self):
+        """Load past run if needed."""
+        if self.num_timesteps != 0:
+            logger.info(f'Loading existing run information from timestep {self.num_timesteps}')
+
+            self.ep_reward_list = self.neptune_run['data/ep_reward'].fetch_values()['value'].values[-100:].tolist()
+
+            self.force_norm_tot_list = (
+                self.neptune_run['data/ep_total_force'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.force_norm_avg_list = (
+                self.neptune_run['data/ep_avg_force'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.force_norm_rms_list = (
+                self.neptune_run['data/ep_rms_force'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.force_norm_max_list = (
+                self.neptune_run['data/ep_max_force'].fetch_values()['value'].values[-100:].tolist()
+            )
+
+            self.torque_norm_tot_list = (
+                self.neptune_run['data/ep_total_torque'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.torque_norm_avg_list = (
+                self.neptune_run['data/ep_avg_torque'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.torque_norm_rms_list = (
+                self.neptune_run['data/ep_rms_torque'].fetch_values()['value'].values[-100:].tolist()
+            )
+            self.torque_norm_max_list = (
+                self.neptune_run['data/ep_max_torque'].fetch_values()['value'].values[-100:].tolist()
+            )
+
+            end_depth_x = self.neptune_run['data/ep_end_depth_x'].fetch_values()['value'].values[-100:].tolist()
+            end_depth_z = self.neptune_run['data/ep_end_depth_z'].fetch_values()['value'].values[-100:].tolist()
+            end_depth_rot = self.neptune_run['data/ep_end_depth_rot'].fetch_values()['value'].values[-100:].tolist()
+
+            self.end_depth_list = [np.array([x, z, r]) for x, z, r in zip(end_depth_x, end_depth_z, end_depth_rot)]
 
 
 class NeptuneTestCallback(NeptuneCallback):
