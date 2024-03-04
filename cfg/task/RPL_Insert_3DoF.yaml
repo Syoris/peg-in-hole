@@ -1,25 +1,34 @@
 name: 'Insert_Kinova3DoF'
 
 rl:
-  algo: PPO
+  algo: ppo # DDPG, PPO, TD3
   hparams:
-    n_timesteps: 12_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
+    n_timesteps: 1_000_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
     action_coeff: 0.01  # coefficient the action will be multiplied by
 
     ddpg: # DDPG specific hyperparameters
-      lr: 0.01
-      tau: 0.001  # Used to update target networks
-      noise_std_dev: 0.2  # Standard dev of OUActionNoise
-
-      buffer:
-        gamma: 0.99  # Discount factor for future rewards
-        capacity: 200000
-        batch_size: 32
+      lr: 0.001
+      tau: 0.005  # Used to update target networks
+      gamma: 0.99  # Discount factor for future rewards
+      buffer_size: 200000
+      batch_size: 256
+      noise_std_dev: 0.1  # Standard dev of OUActionNoise
+      noise_type: 'normal'  # 'ou' or 'normal'
     
     ppo: # PPO specific hyperparameters
       ...
 
+    td3: # TD3 specific hyperparameters
+      lr: 0.0001  # Default 0.001
+      tau: 0.005  # Used to update target networks  Default 0.005
+      noise_std_dev: 0.1  # Standard dev of OUActionNoise  Default 0.1
+      gamma: 0.99  # Discount factor for future rewards Default 0.99
+      buffer_size: 1000000  # Default 1000000
+      batch_size: 256  # Default 256
+      noise_type: 'normal'  # 'ou' or 'normal'
+
   reward:
+    reward_function: 'distance_z2'  # physical, distance, distance_z
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
     min_height_threshold: 0.005  # NOT CURRENTLY USED
     reward_weight: 0.04
@@ -33,6 +42,7 @@ env:
   t_insertion: 2.5
   xpos_hole: 0.529  # x position of the hole
   ypos_hole: -0.007  # y position of the hole
-  misalignment_range: [0.0, 0.0]  # min/max misalignment of joint 7, [deg]
+  misalignment_range: [-0.0, 0.0]  # min/max misalignment of joint 7, [deg]
   pre_insertz: 0.44  # z distance to be covered in pre-insertion phase
   insertz: 0.07  # z distance to be covered in insertion phase, though may change with actions  
+  seed: 0  # Seed for the environment
