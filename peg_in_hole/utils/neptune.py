@@ -472,20 +472,23 @@ class NeptuneTrainCallback(NeptuneCallback, BaseCallback):
             start_timestep=start_timestep,
         )
 
-        self._load_existing_run()
-
     def _init_callback(self) -> None:
         # Create folder if needed
         if self.save_path is not None:
             self.save_path.mkdir(parents=True, exist_ok=True)
 
+        self._load_existing_run()
+
         if self.num_timesteps != 0:
-            logger.debug(f'Deleting data after timestep {self.num_timesteps} from neptune run')
+            logger.info(f'Deleting data after timestep {self.num_timesteps} from neptune run')
 
             # Delete all data after the start timestep
             data_keys = list(self.neptune_run.get_structure()['data'].keys())
 
             for each_key in data_keys:
+                if each_key in ['timestep']:
+                    continue
+
                 vals = self.neptune_run[f'data/{each_key}'].fetch_values()
                 vals = vals[vals['step'] <= self.num_timesteps]
 

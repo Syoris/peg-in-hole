@@ -3,7 +3,7 @@ name: 'Insert_Kinova3DoF'
 rl:
   algo: ppo # DDPG, PPO, TD3
   hparams:
-    n_timesteps: 500_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
+    n_timesteps: 1_000_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
     action_coeff: 0.01  # coefficient the action will be multiplied by
 
     ddpg: # DDPG specific hyperparameters
