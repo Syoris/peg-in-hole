@@ -228,6 +228,7 @@ class RPL_Insert_3DoF(gym.Env):
             'physical': self._reward_function_physical,
             'distance': self._reward_function_distance,
             'distance_z': self._reward_function_distance_z,
+            'distance_z2': self._reward_function_distance_z2,
         }
 
         self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
@@ -318,6 +319,8 @@ class RPL_Insert_3DoF(gym.Env):
             done (bool): Flag indicating if the episode is done
             info (dict): Additional information about the step
         """
+        terminated = False
+
         self.action = action
         self.prev_j_vel = self.next_j_vel
         self.next_j_vel = self._get_ik_vels(self.insertz, self.step_count, step_types=self.insertion_steps)
@@ -342,6 +345,18 @@ class RPL_Insert_3DoF(gym.Env):
         # Reward
         reward = self.reward_func()
 
+        # Check limits
+        x_lims = [self.xpos_hole - 0.06, self.xpos_hole + 0.06]
+        z_lims = [0.0, 0.09]
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, _ = self._read_tips_pos_fk(joints_pos)
+        if k_peg_x < x_lims[0] or k_peg_x > x_lims[1] or k_peg_z > z_lims[1]:
+            reward -= 100
+            terminated = True
+
+        elif k_peg_z < z_lims[0]:
+            terminated = True
+
         # Done flag
         self.step_count += 1
         if self.step_count >= self.insertion_steps:
@@ -350,7 +365,7 @@ class RPL_Insert_3DoF(gym.Env):
         # Info
         info = self._get_step_info()  # plug force and torque
 
-        return self.obs, reward, self.sim_completed, False, info
+        return self.obs, reward, self.sim_completed, terminated, info
 
     def render(self):
         if self.render_mode is None:
@@ -661,5 +676,21 @@ class RPL_Insert_3DoF(gym.Env):
         k_peg_dz = k_peg_z_start - k_peg_z
 
         reward = -(self.insertz - k_peg_dz) / self.insertz
+
+        return reward
+
+    def _reward_function_distance_z2(self):
+        """Reward derived from Deep Reinforcement Learning for High Precision Assembly Tasks (@Inoue2017).
+        Instead of having a fix depth in z, it follows the IK solution"""
+
+        # k_goal = np.array([0.529, -0.007, 0.0156])
+        k_peg_z_start = 0.0856
+        z_goal = self.step_count * (self.insertz / self.insertion_steps)
+
+        joints_pos = self.obs[0:3]
+        _, k_peg_z, _ = self._read_tips_pos_fk(joints_pos)
+        k_peg_dz = k_peg_z_start - k_peg_z
+
+        reward = -(abs(z_goal - k_peg_dz))
 
         return reward

@@ -60,7 +60,7 @@ def train(cfg: DictConfig):
         run[f'model_checkpoints/{latest}/model'].download(destination=model_path.as_posix())
 
     """ Environment """
-    # TODO: Create env based on config
+    # TODO: Create env based on config (from loaded run)
     render_mode = 'human' if cfg.train.render else None
     # env = gym.make(env_name, render_mode=render_mode, task_cfg=task_cfg)
     env = RPL_Insert_3DoF(render_mode=render_mode, task_cfg=task_cfg)
