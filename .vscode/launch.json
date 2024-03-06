@@ -25,7 +25,7 @@
             "name": "plots",
             "type": "debugpy",
             "request": "launch",
-            "program": "peg_in_hole/utils/plots.py",
+            "program": "peg_in_hole/plots.py",
             "console": "integratedTerminal",
             "justMyCode": true
         },

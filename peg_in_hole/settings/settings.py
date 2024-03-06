@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     cfg_path: DirectoryPath = ''
     assets_path: DirectoryPath = ''
     vortex_resources_path: DirectoryPath = ''
+    data_path: DirectoryPath = ''
 
     @field_validator('vortex_installation_path')
     @classmethod
@@ -31,7 +32,7 @@ class Settings(BaseSettings):
 
         return v
 
-    @field_validator('cfg_path', 'vortex_resources_path', 'assets_path')
+    @field_validator('cfg_path', 'vortex_resources_path', 'assets_path', 'data_path')
     @classmethod
     def get_cfg_path(cls, v, info: ValidationInfo) -> DirectoryPath:
         pkg_path = info.data['package_path']
@@ -39,12 +40,15 @@ class Settings(BaseSettings):
         if info.field_name == 'cfg_path':
             v = pkg_path / 'cfg'
 
-        if info.field_name == 'assets_path':
+        elif info.field_name == 'assets_path':
             v = pkg_path / 'assets'
 
         elif info.field_name == 'vortex_resources_path':
             assets_path = info.data['assets_path']
             v = assets_path / 'vortex'
+
+        elif info.field_name == 'data_path':
+            v = pkg_path / 'data'
 
         return v
 
