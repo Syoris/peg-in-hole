@@ -227,6 +227,7 @@ class RPL_Insert_3DoF(gym.Env):
         reward_functions = {
             'physical': self._reward_function_physical,
             'distance': self._reward_function_distance,
+            'distance2': self._reward_function_distance2,
             'distance_z': self._reward_function_distance_z,
             'distance_z2': self._reward_function_distance_z2,
         }
@@ -350,12 +351,12 @@ class RPL_Insert_3DoF(gym.Env):
         z_lims = [0.0, 0.09]
         joints_pos = self.obs[0:3]
         k_peg_x, k_peg_z, _ = self._read_tips_pos_fk(joints_pos)
-        if k_peg_x < x_lims[0] or k_peg_x > x_lims[1] or k_peg_z > z_lims[1]:
-            reward -= 100
-            terminated = True
+        # if k_peg_x < x_lims[0] or k_peg_x > x_lims[1] or k_peg_z > z_lims[1]:
+        #     reward -= 100
+        #     terminated = True
 
-        elif k_peg_z < z_lims[0]:
-            terminated = True
+        # elif k_peg_z < z_lims[0]:
+        #     terminated = True
 
         # Done flag
         self.step_count += 1
@@ -666,6 +667,23 @@ class RPL_Insert_3DoF(gym.Env):
 
         return reward
 
+    def _reward_function_distance2(self):
+        z_goal = self.step_count * (self.insertz / self.insertion_steps)
+        z_start = 0.0853713472868764
+
+        k_goal = np.array([0.529, -0.007, z_start - z_goal])
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+        # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+        dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+
+        reward = -dist
+
+        return reward
+
     def _reward_function_distance_z(self):
         """Reward from Deep Reinforcement Learning for High Precision Assembly Tasks (@Inoue2017)"""
         # k_goal = np.array([0.529, -0.007, 0.0156])
@@ -675,7 +693,7 @@ class RPL_Insert_3DoF(gym.Env):
         k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
         k_peg_dz = k_peg_z_start - k_peg_z
 
-        reward = -(self.insertz - k_peg_dz) / self.insertz
+        reward = -(abs(self.insertz - k_peg_dz)) / self.insertz
 
         return reward
 

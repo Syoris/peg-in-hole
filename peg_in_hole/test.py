@@ -33,7 +33,7 @@ def test(cfg: DictConfig):
     logger.info(f'Task: {cfg.task.name}')
 
     if cfg.test.use_neptune is not False:
-        run = init_neptune_run(cfg.train.run_name, neptune_cfg=cfg.neptune)
+        run = init_neptune_run(None, neptune_cfg=cfg.neptune)
     else:
         run = None
 

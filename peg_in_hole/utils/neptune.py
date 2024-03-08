@@ -26,7 +26,12 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = 
     """
     # Create new neptune run
     if run_name is not None:
-        run_id = f'PH-{run_name}'
+        run_name = str(run_name)
+        if 'ph' not in run_name.lower():
+            run_id = f'PH-{run_name}'
+        else:
+            run_id = run_name
+
         logger.info(f'Loading existing run: {run_id}')
         mode = 'read-only' if read_only else 'async'
         run = neptune.init_run(
@@ -400,19 +405,21 @@ class NeptuneCallback(ABC):
             # If model has a replay buffer, save it too
             replay_buffer_path = self._checkpoint_path('replay_buffer_', extension='pkl')
             self.model.save_replay_buffer(replay_buffer_path)  # type: ignore[attr-defined]
-            if self.verbose > 1:
+            if self.verbose >= 1:
                 print(f'Saving model replay buffer checkpoint to {replay_buffer_path}')
 
-            self.neptune_run['model_checkpoints/buffer'].upload(replay_buffer_path.as_posix())
+            self.neptune_run[f'model_checkpoints/{self.num_timesteps}/buffer'].upload(replay_buffer_path.as_posix())
 
         if self.save_vecnormalize and self.model.get_vec_normalize_env() is not None:
             # Save the VecNormalize statistics
             vec_normalize_path = self._checkpoint_path('vecnormalize_', extension='pkl')
             self.model.get_vec_normalize_env().save(vec_normalize_path)  # type: ignore[union-attr]
-            if self.verbose >= 2:
+            if self.verbose >= 1:
                 print(f'Saving model VecNormalize to {vec_normalize_path}')
 
-            self.neptune_run['model_checkpoints/vec_normalize'].upload(vec_normalize_path.as_posix())
+            self.neptune_run[f'model_checkpoints/{self.num_timesteps}/vec_normalize'].upload(
+                vec_normalize_path.as_posix()
+            )
 
     def _on_run_end(self) -> None:
         # Compute the mean of the evaluation values
