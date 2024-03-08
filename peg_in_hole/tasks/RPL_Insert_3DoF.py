@@ -228,8 +228,12 @@ class RPL_Insert_3DoF(gym.Env):
             'physical': self._reward_function_physical,
             'distance': self._reward_function_distance,
             'distance2': self._reward_function_distance2,
+            'distance_l2': self._reward_function_distance_l2,
             'distance_z': self._reward_function_distance_z,
             'distance_z2': self._reward_function_distance_z2,
+            'sparse': self._reward_sparse,
+            'dist_rot_var': self._reward_function_dist_rot_var,
+            'shaped': self._reward_shaped,
         }
 
         self.reward_min_threshold = self.task_cfg.rl.reward.reward_min_threshold
@@ -684,6 +688,23 @@ class RPL_Insert_3DoF(gym.Env):
 
         return reward
 
+    def _reward_function_distance_l2(self):
+        z_goal = self.step_count * (self.insertz / self.insertion_steps)
+        z_start = 0.0853713472868764
+
+        k_goal = np.array([0.529, -0.007, z_start - z_goal])
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+        # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+        dist = abs(np.linalg.norm(k_goal - k_peg))
+
+        reward = -dist
+
+        return reward
+
     def _reward_function_distance_z(self):
         """Reward from Deep Reinforcement Learning for High Precision Assembly Tasks (@Inoue2017)"""
         # k_goal = np.array([0.529, -0.007, 0.0156])
@@ -710,5 +731,71 @@ class RPL_Insert_3DoF(gym.Env):
         k_peg_dz = k_peg_z_start - k_peg_z
 
         reward = -(abs(z_goal - k_peg_dz))
+
+        return reward
+
+    def _reward_sparse(self):
+        """Sparse reward function"""
+        if self.step_count != 248:
+            return 0
+
+        else:
+            k_goal = np.array([0.529, -0.007, 0.0156])
+
+            joints_pos = self.obs[0:3]
+            k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+            k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+            # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+            dist = abs(np.linalg.norm(k_goal - k_peg))
+
+            if dist < 0.005:
+                return 1
+            else:
+                return -1
+
+    def _reward_function_dist_rot_var(self):
+        z_goal = self.step_count * (self.insertz / self.insertion_steps)
+        z_start = 0.0853713472868764
+
+        k_goal = np.array([0.529, -0.007, z_start - z_goal])
+        k_rot_goal = np.pi
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+        # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+        dist = abs(np.linalg.norm(k_goal - k_peg))
+
+        rot_err = abs(k_rot_goal - k_peg_rot)
+
+        reward = -(dist + rot_err)
+
+        return reward
+
+    def _reward_shaped(self):
+        # z_goal = self.step_count * (self.insertz / self.insertion_steps)
+        # z_start = 0.0853713472868764
+
+        k_goal = np.array([0.529, -0.007, 0.0156])
+        # k_rot_goal = np.pi
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+        # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+        l1_norm = np.linalg.norm(k_goal - k_peg, ord=1)
+        l2_norm = np.linalg.norm(k_goal - k_peg, ord=2)
+
+        inserting = k_peg_z < 0.08 and abs(k_peg_x - k_goal[0]) < 0.01
+
+        alpha = -100
+        beta = 0.002
+        phi = -0.1 if not inserting else 0.1
+        eps = 1e-6
+
+        reward = alpha * l1_norm + beta / (l2_norm + eps) + phi
 
         return reward

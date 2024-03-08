@@ -46,15 +46,21 @@ def get_model(env, task_cfg, model_path=None, model_type=None):
 
 def initialize_ddpg_model(env, task_cfg, model_path=None):
     if model_path is not None:
+        logger.info(f'Loading DDPG model from {model_path.as_posix()}')
         if 'test' in model_path.as_posix():
-            logger.info(f'Loading DDPG model from {model_path.as_posix()}')
             model = DDPG.load(model_path.as_posix(), env)
 
         else:
-            raise ValueError('DDPG model not supported for training yet')
+            model = DDPG.load(model_path.as_posix(), env)
+
+            buffer_path = model_path.as_posix()
+            buffer_path = buffer_path.replace('rl_model_', 'rl_model_replay_buffer_')
+            buffer_path = buffer_path.replace('.zip', '')
+
+            model.load_replay_buffer(buffer_path)
 
     else:
-        algo_params = task_cfg.rl.hparams.td3
+        algo_params = task_cfg.rl.hparams.ddpg
 
         lr = algo_params.lr
         tau = algo_params.tau  # Used to update target networks
@@ -62,6 +68,7 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
         buffer_size = algo_params.buffer_size
         batch_size = algo_params.batch_size
         noise_std_dev = algo_params.noise_std_dev
+        learning_starts = algo_params.learning_starts
 
         n_actions = env.action_space.shape[-1]
         if algo_params.noise_type == 'ou':
@@ -74,6 +81,14 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
         else:
             raise ValueError(f'Noise type {algo_params.noise_type} not recognized')
 
+        # Architecture
+        policy_kwargs = None
+        if algo_params.net_arch_pi is not None:
+            actor_arch = algo_params.net_arch_pi
+            critic_arch = algo_params.net_arch_qf
+
+            policy_kwargs = dict(net_arch=dict(pi=actor_arch, qf=critic_arch))
+
         model = DDPG(
             'MlpPolicy',
             env,
@@ -84,7 +99,15 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
             gamma=gamma,
             buffer_size=buffer_size,
             batch_size=batch_size,
+            policy_kwargs=policy_kwargs,
+            learning_starts=learning_starts,
         )
+
+        # Set actor's last layer to 0
+        n_keys = len([x for x in model.policy.state_dict().keys() if 'actor_target' in x])
+        last_layer_num = n_keys - 2
+        model.policy.state_dict()[f'actor.mu.{last_layer_num}.weight'].zero_()
+        model.policy.state_dict()[f'actor_target.mu.{last_layer_num}.weight'].zero_()
 
     model_params = {
         'algo': 'DDPG',
@@ -94,7 +117,9 @@ def initialize_ddpg_model(env, task_cfg, model_path=None):
         'buffer_size': model.buffer_size,
         'batch_size': model.batch_size,
         'noise_std_dev': model.action_noise._sigma[0],
+        'learning_starts': model.learning_starts,
     }
+    model_params.update(model.policy_kwargs)
 
     return model, model_params
 

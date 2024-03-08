@@ -55,9 +55,14 @@ def train(cfg: DictConfig):
         models = run['model_checkpoints'].fetch()
         latest = max(models.keys(), key=lambda x: int(x))
         model_path = log_dir / f'rl_model_{latest}_steps.zip'
+        buffer_path = log_dir / f'rl_model_replay_buffer_{latest}_steps.pkl'
 
         logger.info(f'Downloading model for {cfg.train.run_name}. Saving to {model_path.as_posix()}')
-        run[f'model_checkpoints/{latest}/model'].download(destination=model_path.as_posix())
+        try:
+            run[f'model_checkpoints/{latest}/model'].download(destination=model_path.as_posix())
+            run[f'model_checkpoints/{latest}/buffer'].download(destination=buffer_path.as_posix())
+        except Exception as e:
+            logger.error(f'Error downloading model: {e}')
 
     """ Environment """
     # TODO: Create env based on config (from loaded run)

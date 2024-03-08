@@ -3,19 +3,20 @@ name: 'Insert_Kinova3DoF'
 rl:
   algo: ddpg # DDPG, PPO, TD3
   hparams:
-    n_timesteps: 500_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
+    n_timesteps: 750_000  # Total num of episodes  (typically 2500 timesteps for 10 episodes)
     action_coeff: 0.01  # coefficient the action will be multiplied by
 
     ddpg: # DDPG specific hyperparameters
-      lr: 0.001
+      lr: 0.0001
       tau: 0.005  # Used to update target networks
       gamma: 0.99  # Discount factor for future rewards
       buffer_size: 200000
-      batch_size: 256
+      batch_size: 32
       noise_std_dev: 0.1  # Standard dev of OUActionNoise
-      noise_type: 'normal'  # 'ou' or 'normal'
+      noise_type: 'ou'  # 'ou' or 'normal'
       net_arch_pi: [32, 32, 32, 32]  # Number of neurons in each layer of the actor4
       net_arch_qf: [32, 32, 32, 32]  # Number of neurons in each layer of the critic
+      learning_starts: 1000  # Number of steps before learning starts
     
     ppo: # PPO specific hyperparameters
       ...
@@ -30,7 +31,7 @@ rl:
       noise_type: 'normal'  # 'ou' or 'normal'
 
   reward:
-    reward_function: 'distance2'  # physical, distance, distance2, distance_z, distance_z2
+    reward_function: 'shaped'  # physical, distance, distance2, distance_z, distance_z2, distance_l2, dist_rot_var
     reward_min_threshold: -5.0  # NOT CURRENTLY USED
     min_height_threshold: 0.005  # NOT CURRENTLY USED
     reward_weight: 0.04
