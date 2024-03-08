@@ -332,7 +332,7 @@ class RPL_Insert_3DoF(gym.Env):
 
         # Scale actions
         act_j2 = self.action_coeff * self.action[0] * self.act_high_bound[0]
-        act_j6 = self.action_coeff * self.action[1] * self.act_high_bound[1]
+        act_j6 = self.action_coeff * self.action[1] * self.act_high_bound[0]
 
         j2_vel = self.next_j_vel[0] - act_j2
         j4_vel = self.next_j_vel[1] + act_j6 - act_j2
