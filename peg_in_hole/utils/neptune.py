@@ -14,17 +14,17 @@ from typing import Literal, Union  # noqa
 logger = logging.getLogger(__name__)
 
 
-def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = False) -> neptune.Run:
+def init_neptune_run(run_name: Union[str, int, None], neptune_cfg, read_only: bool = False) -> neptune.Run:
     """Initialize a neptune run. If neptune_run is None, create a new run. Else, tryies to resume the run.
 
     Args:
-        neptune_run (str | None): Name of the neptune run to resume. If None, create a new run.
+        neptune_run (str | int | None): Name of the neptune run to load. If None, create a new run.
         neptune_cfg (OmegaDict): Neptune config
 
     Returns:
         neptune.Run: _description_
     """
-    # Create new neptune run
+    # Load existing neptune run
     if run_name is not None:
         run_name = str(run_name)
         if 'ph' not in run_name.lower():
@@ -41,6 +41,7 @@ def init_neptune_run(run_name: Union[str, None], neptune_cfg, read_only: bool = 
             mode=mode,
         )
 
+    # Create new neptune run
     else:
         run_name = datetime.today().strftime('%Y-%m-%d_%H-%M_PH')
 
