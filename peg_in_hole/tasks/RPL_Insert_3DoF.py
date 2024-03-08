@@ -229,6 +229,7 @@ class RPL_Insert_3DoF(gym.Env):
             'distance': self._reward_function_distance,
             'distance2': self._reward_function_distance2,
             'distance_l2': self._reward_function_distance_l2,
+            'distance_l2_fix': self._reward_function_distance_l2_fix,
             'distance_z': self._reward_function_distance_z,
             'distance_z2': self._reward_function_distance_z2,
             'sparse': self._reward_sparse,
@@ -659,6 +660,7 @@ class RPL_Insert_3DoF(gym.Env):
         )
         return reward
 
+    # 2-norm squared, fixed
     def _reward_function_distance(self):
         k_goal = np.array([0.529, -0.007, 0.0156])
         joints_pos = self.obs[0:3]
@@ -671,6 +673,7 @@ class RPL_Insert_3DoF(gym.Env):
 
         return reward
 
+    # 2-norm squared, var
     def _reward_function_distance2(self):
         z_goal = self.step_count * (self.insertz / self.insertion_steps)
         z_start = 0.0853713472868764
@@ -688,6 +691,22 @@ class RPL_Insert_3DoF(gym.Env):
 
         return reward
 
+    # 2-norm, fix
+    def _reward_function_distance_l2_fix(self):
+        k_goal = np.array([0.529, -0.007, 0.0156])
+
+        joints_pos = self.obs[0:3]
+        k_peg_x, k_peg_z, k_peg_rot = self._read_tips_pos_fk(joints_pos)
+        k_peg = np.array([k_peg_x, -0.007, k_peg_z])
+
+        # dist = np.sum(np.square(k_goal - k_peg))  # 2-norm square
+        dist = np.linalg.norm(k_goal - k_peg)
+
+        reward = -dist
+
+        return reward
+
+    # 2-norm, var
     def _reward_function_distance_l2(self):
         z_goal = self.step_count * (self.insertz / self.insertion_steps)
         z_start = 0.0853713472868764

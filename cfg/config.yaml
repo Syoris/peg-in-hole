@@ -2,7 +2,7 @@ defaults:
   - task: RPL_Insert_3DoF
   - _self_
 
-run: train  # train, test or both (not implemented)
+run: test  # train, test or both (not implemented)
 
 train:
   render: False
@@ -10,9 +10,9 @@ train:
   use_neptune: True
 
 test:
-  n_epochs: 10
-  render: True
-  model_id: '284'  # Name of the model to test. '90' loads the latest model, '90_10000' loads the model at 10,000 steps, None for IK
+  n_epochs: 100
+  render: False
+  model_id: 'None'  # Name of the model to test. '90' loads the latest model, '90_10000' loads the model at 10,000 steps, None for IK
   log_freq: 1  # Interval to log the environment (in timesteps)
   use_neptune: True
   render_speed:  0.75  # 1 is normal speed, 0.5 is half speed, 2 is double speed
